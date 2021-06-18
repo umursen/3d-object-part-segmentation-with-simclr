@@ -9,10 +9,10 @@ from torch.nn import functional as F
 
 from transforms import SimCLRTrainDataTransform, SimCLREvalDataTransform
 
-from pl_bolts.optimizers.lars import LARS
-from pl_bolts.optimizers.lr_scheduler import linear_warmup_decay
+from optimizers.lars import LARS
+from optimizers.lr_scheduler import linear_warmup_decay
 
-from modules.pointnet import PointNetEncoder
+from models.pointnet import PointNetEncoder
 
 
 class SyncFunction(torch.autograd.Function):
@@ -71,8 +71,6 @@ class SimCLR(pl.LightningModule):
         warmup_epochs: int = 10,
         max_epochs: int = 100,
         temperature: float = 0.1,
-        first_conv: bool = True,
-        maxpool1: bool = True,
         optimizer: str = 'adam',
         exclude_bn_bias: bool = False,
         start_lr: float = 0.,
@@ -102,8 +100,6 @@ class SimCLR(pl.LightningModule):
 
         self.hidden_mlp = hidden_mlp
         self.feat_dim = feat_dim
-        self.first_conv = first_conv
-        self.maxpool1 = maxpool1
 
         self.optim = optimizer
         self.exclude_bn_bias = exclude_bn_bias
@@ -267,7 +263,7 @@ class SimCLR(pl.LightningModule):
         parser.add_argument("--fp32", action='store_true')
 
         # transform params
-        parser.add_argument("--dataset", type=str, default="shape_net", help="dataset to train")
+        parser.add_argument("--dataset", type=str, default="shapenet", help="dataset to train")
         parser.add_argument("--data_dir", type=str, default=".", help="path to download data")
 
         # training params
@@ -302,11 +298,13 @@ def cli_main():
     if args.dataset == 'all':
         # TODO: Set data loader
         dm = ...
-    elif args.dataset == 'shape_net':
+    elif args.dataset == 'shapenet':
         # TODO: Set data loader
         dm = ...
     elif args.dataset == 'coseg':
         # TODO: Set data loader
+        dm = ...
+    elif args.dataset == 'shapenet_toy_dataset':
         dm = ...
     else:
         raise NotImplementedError("other datasets have not been implemented till now")
