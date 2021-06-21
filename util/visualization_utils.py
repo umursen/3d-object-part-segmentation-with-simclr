@@ -13,6 +13,7 @@ def visualize_pointcloud(point_cloud, point_size=0.05, colors=None, flip_axes=Fa
     plt_points.shader = '3d'
     return plot.display()
 
+
 def visualize_mesh(mesh, flip_axes=False):
     vertices = mesh.vertices
     faces = mesh.faces
