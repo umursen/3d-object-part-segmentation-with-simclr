@@ -48,6 +48,7 @@ class Projection(nn.Module):
 
         self.model = nn.Sequential(
             nn.Linear(self.input_dim, self.hidden_dim), nn.BatchNorm1d(self.hidden_dim), nn.ReLU(),
+            nn.Linear(self.hidden_dim, self.hidden_dim), nn.BatchNorm1d(self.hidden_dim), nn.ReLU(),
             nn.Linear(self.hidden_dim, self.output_dim, bias=False)
         )
 
@@ -129,8 +130,7 @@ class SimCLR(pl.LightningModule):
         return backbone
 
     def forward(self, x):
-        # bolts resnet returns a list
-        return self.encoder(x)[-1]
+        return self.encoder(x)
 
     def shared_step(self, batch):
         # final image in tuple is for online eval
@@ -310,7 +310,6 @@ def cli_main():
         raise NotImplementedError("other datasets have not been implemented till now")
 
     dm.train_transforms = SimCLRTrainDataTransform()
-
     dm.val_transforms = SimCLREvalDataTransform()
 
     model = SimCLR(**args.__dict__)

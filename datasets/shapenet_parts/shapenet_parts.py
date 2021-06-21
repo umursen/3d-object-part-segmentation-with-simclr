@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-class ShapeNetParts(torch.utils.data.Dataset):
+class ShapeNetParts():
 
     def __init__(self, split):
         assert split in ['train', 'val', 'test']
@@ -62,38 +62,40 @@ class ShapeNetParts(torch.utils.data.Dataset):
                 self.seg_classes[ls[0]] = int(ls[1])
         self.num_seg_classes = self.seg_classes[list(self.cat.keys())[0]]
 
+    # def __getitem__(self, index):
+    #     point_set, seg = self.get_point_cloud_with_labels(index)
+    #
+    #     return point_set, seg
+    #
+    # def __len__(self):
+    #     return len(self.datapath)
 
-    def __getitem__(self, index):
-        point_set, seg = self.get_point_cloud_with_labels(index)
+    def get_all_data(self):
+        pass
 
-        return point_set, seg
-
-    def __len__(self):
-        return len(self.datapath)
-
-    def get_point_cloud_with_labels(self,index):
-        fn = self.datapath[index]
-        point_set = np.loadtxt(fn[1]).astype(np.float32)
-        seg = np.loadtxt(fn[2]).astype(np.int64)
-        #print(f"point_set.shape, seg.shape:{point_set.shape, seg.shape}")
-
-        choice = np.random.choice(len(seg), self.npoints, replace=True)
-        #resample
-        point_set = point_set[choice, :]
-
-        point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
-        dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
-        point_set = point_set / dist #scale
-
-        if self.data_augmentation:
-            theta = np.random.uniform(0,np.pi*2)
-            rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
-            point_set[:,[0,2]] = point_set[:,[0,2]].dot(rotation_matrix) # random rotation
-            point_set += np.random.normal(0, 0.02, size=point_set.shape) # random jitter
-
-        seg = seg[choice]
-        point_set = torch.from_numpy(point_set)
-        seg = torch.from_numpy(seg)
-        #print(f"point_set, seg:{point_set, seg}")
-
-        return point_set, seg
+    # def get_point_cloud_with_labels(self,index):
+    #     fn = self.datapath[index]
+    #     point_set = np.loadtxt(fn[1]).astype(np.float32)
+    #     seg = np.loadtxt(fn[2]).astype(np.int64)
+    #     #print(f"point_set.shape, seg.shape:{point_set.shape, seg.shape}")
+    #
+    #     choice = np.random.choice(len(seg), self.npoints, replace=True)
+    #     #resample
+    #     point_set = point_set[choice, :]
+    #
+    #     point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
+    #     dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
+    #     point_set = point_set / dist #scale
+    #
+    #     if self.data_augmentation:
+    #         theta = np.random.uniform(0,np.pi*2)
+    #         rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
+    #         point_set[:,[0,2]] = point_set[:,[0,2]].dot(rotation_matrix) # random rotation
+    #         point_set += np.random.normal(0, 0.02, size=point_set.shape) # random jitter
+    #
+    #     seg = seg[choice]
+    #     point_set = torch.from_numpy(point_set)
+    #     seg = torch.from_numpy(seg)
+    #     #print(f"point_set, seg:{point_set, seg}")
+    #
+    #     return point_set, seg
