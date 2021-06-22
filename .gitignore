@@ -1,4 +1,4 @@
 .idea/*
-data/
 .ipynb_checkpoints/
 __pycache__/
+datasets/shapenetcore_partanno_segmentation_benchmark_v0/
