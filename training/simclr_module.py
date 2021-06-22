@@ -12,7 +12,7 @@ from transforms import SimCLRTrainDataTransform, SimCLREvalDataTransform
 from optimizers.lars import LARS
 from optimizers.lr_scheduler import linear_warmup_decay
 
-from models.pointnet import PointNetEncoder
+from modules.pointnet import PointNetEncoder
 
 
 class SyncFunction(torch.autograd.Function):
