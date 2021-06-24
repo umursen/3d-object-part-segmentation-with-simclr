@@ -1,3 +1,6 @@
+import os
+import sys; sys.path.append(os.getcwd())
+
 import math
 from argparse import ArgumentParser
 
@@ -12,7 +15,10 @@ from transforms import SimCLRTrainDataTransform, SimCLREvalDataTransform
 from optimizers.lars import LARS
 from optimizers.lr_scheduler import linear_warmup_decay
 
-from modules.pointnet import PointNetEncoder
+from models.pointnet import PointNetEncoder
+from datasets.data_modules import PartSegmentationUSLDataModule
+from augmentations.augmentations import *
+import pdb
 
 
 class SyncFunction(torch.autograd.Function):
@@ -53,7 +59,6 @@ class Projection(nn.Module):
         )
 
     def forward(self, x):
-        x = self.model(x)
         return F.normalize(x, dim=1)
 
 
@@ -130,6 +135,7 @@ class SimCLR(pl.LightningModule):
         return backbone
 
     def forward(self, x):
+        # pdb.set_trace()
         return self.encoder(x)
 
     def shared_step(self, batch):
@@ -145,7 +151,6 @@ class SimCLR(pl.LightningModule):
         z2 = self.projection(h2)
 
         loss = self.nt_xent_loss(z1, z2, self.temperature)
-
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -220,6 +225,7 @@ class SimCLR(pl.LightningModule):
         # gather representations in case of distributed training
         # out_1_dist: [batch_size * world_size, dim]
         # out_2_dist: [batch_size * world_size, dim]
+
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             out_1_dist = SyncFunction.apply(out_1)
             out_2_dist = SyncFunction.apply(out_2)
@@ -267,7 +273,7 @@ class SimCLR(pl.LightningModule):
         parser.add_argument("--data_dir", type=str, default=".", help="path to download data")
 
         # training params
-        parser.add_argument("--fast_dev_run", default=1, type=int)
+        parser.add_argument("--fast_dev_run", default=0, type=int)
         parser.add_argument("--num_nodes", default=1, type=int, help="number of nodes for training")
         parser.add_argument("--gpus", default=1, type=int, help="number of gpus to train on")
         parser.add_argument("--num_workers", default=8, type=int, help="num of workers per GPU")
@@ -300,7 +306,16 @@ def cli_main():
         dm = ...
     elif args.dataset == 'shapenet':
         # TODO: Set data loader
-        dm = ...
+        dm = PartSegmentationUSLDataModule(args.batch_size)
+
+        dm.train_transforms = SimCLRTrainDataTransform([
+            GaussianWhiteNoise(p=0.7),
+            Rotation(0.5)
+        ])
+        dm.val_transforms = SimCLREvalDataTransform([
+            GaussianWhiteNoise(p=0.7),
+            Rotation(0.5)
+        ])
     elif args.dataset == 'coseg':
         # TODO: Set data loader
         dm = ...
@@ -309,21 +324,21 @@ def cli_main():
     else:
         raise NotImplementedError("other datasets have not been implemented till now")
 
-    dm.train_transforms = SimCLRTrainDataTransform()
-    dm.val_transforms = SimCLREvalDataTransform()
+    args.num_samples = len(dm.train_dataloader().dataset)
 
     model = SimCLR(**args.__dict__)
 
-    # Let's remove this for now (umur)
-    online_evaluator = None
-    if args.online_ft and False:
-        # online eval
-        online_evaluator = ...
+    # # Let's remove this for now (umur)
+    # online_evaluator = None
+    # if args.online_ft and False:
+    #     # online eval
+    #     online_evaluator = ...
 
     lr_monitor = LearningRateMonitor(logging_interval="step")
     model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='val_loss')
-    callbacks = [model_checkpoint, online_evaluator] if args.online_ft else [model_checkpoint]
-    callbacks.append(lr_monitor)
+    callbacks = [model_checkpoint, lr_monitor]
+
+    print(args.gpus)
 
     trainer = pl.Trainer(
         max_epochs=args.max_epochs,

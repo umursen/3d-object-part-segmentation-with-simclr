@@ -1,4 +1,3 @@
-import torch
 from pathlib import Path
 import json
 import os
@@ -6,18 +5,19 @@ import os.path
 
 import numpy as np
 import torch
-from tqdm import tqdm
+from torch.utils.data import Dataset
 
-class ShapeNetParts():
 
-    def __init__(self, split):
+class ShapeNetParts(Dataset):
+
+    def __init__(self, split, transforms):
         assert split in ['train', 'val', 'test']
 
         self.root = os.getcwd()
         dataset_path = Path(
             "datasets/shapenet_parts/shapenetcore_partanno_segmentation_benchmark_v0/")  # path to point cloud data
 
-        self.catfile = os.path.join(self.root,dataset_path,'synsetoffset2category.txt')
+        self.catfile = os.path.join(self.root, dataset_path, 'synsetoffset2category.txt')
 
         self.cat = {}
         self.seg_classes = {}
@@ -55,47 +55,64 @@ class ShapeNetParts():
 
         self.classes = dict(zip(sorted(self.cat), range(len(self.cat))))
 
-
         with open(os.path.join(self.root, 'datasets/shapenet_parts/misc/num_seg_classes.txt'), 'r') as f:
             for line in f:
                 ls = line.strip().split()
                 self.seg_classes[ls[0]] = int(ls[1])
         self.num_seg_classes = self.seg_classes[list(self.cat.keys())[0]]
 
-    # def __getitem__(self, index):
-    #     point_set, seg = self.get_point_cloud_with_labels(index)
-    #
-    #     return point_set, seg
-    #
-    # def __len__(self):
-    #     return len(self.datapath)
+        # Transforms
+        self.transforms = transforms
 
-    def get_all_data(self):
-        pass
+    def __getitem__(self, index):
+        point_set, seg = self.get_point_cloud_with_labels(index)
 
-    # def get_point_cloud_with_labels(self,index):
-    #     fn = self.datapath[index]
-    #     point_set = np.loadtxt(fn[1]).astype(np.float32)
-    #     seg = np.loadtxt(fn[2]).astype(np.int64)
-    #     #print(f"point_set.shape, seg.shape:{point_set.shape, seg.shape}")
-    #
-    #     choice = np.random.choice(len(seg), self.npoints, replace=True)
-    #     #resample
-    #     point_set = point_set[choice, :]
-    #
-    #     point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
-    #     dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
-    #     point_set = point_set / dist #scale
-    #
-    #     if self.data_augmentation:
-    #         theta = np.random.uniform(0,np.pi*2)
-    #         rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
-    #         point_set[:,[0,2]] = point_set[:,[0,2]].dot(rotation_matrix) # random rotation
-    #         point_set += np.random.normal(0, 0.02, size=point_set.shape) # random jitter
-    #
-    #     seg = seg[choice]
-    #     point_set = torch.from_numpy(point_set)
-    #     seg = torch.from_numpy(seg)
-    #     #print(f"point_set, seg:{point_set, seg}")
-    #
-    #     return point_set, seg
+        if self.transforms:
+            sample = {
+                'point': point_set,
+                'seg': seg
+            }
+            i, j = self.transforms(sample)
+            x = torch.from_numpy(i['point']).T, torch.from_numpy(j['point']).T
+            y = torch.from_numpy(i['seg'])
+        else:
+            x = torch.from_numpy(point_set)
+            y = torch.from_numpy(seg)
+
+        return x, y
+
+    def __len__(self):
+        return len(self.datapath)
+
+    def get_point_cloud_with_labels(self,index):
+        fn = self.datapath[index]
+        point_set = np.loadtxt(fn[1]).astype(np.float32)
+        seg = np.loadtxt(fn[2]).astype(np.int64)
+        #print(f"point_set.shape, seg.shape:{point_set.shape, seg.shape}")
+
+        choice = np.random.choice(len(seg), self.npoints, replace=True)
+        #resample
+        point_set = point_set[choice, :]
+
+        point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
+        dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
+        point_set = point_set / dist #scale
+
+        seg = seg[choice]
+
+        # if self.data_augmentation:
+        #     theta = np.random.uniform(0,np.pi*2)
+        #     rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
+        #     point_set[:,[0,2]] = point_set[:,[0,2]].dot(rotation_matrix) # random rotation
+        #     point_set += np.random.normal(0, 0.02, size=point_set.shape) # random jitter
+
+        # if self.transform:
+        #     input = {"point": point_set, "seg": seg}
+        #     input = self.transform(input)
+        #     point_set = input['point']
+        #     seg = input['seg']
+
+        # print(f"point_set: {point_set.shape}")
+        # print(f"seg: {seg.shape}")
+
+        return point_set, seg
