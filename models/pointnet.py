@@ -24,7 +24,6 @@ class PointNetEncoder(nn.Module):
 
     def forward(self,x):
         num_points = x.shape[2]
-
         input_transform = self.input_transform_net(x)
         x = torch.bmm(x.transpose(2, 1), input_transform).transpose(2, 1)
         x = self.relu(self.bn1(self.conv1(x)))
