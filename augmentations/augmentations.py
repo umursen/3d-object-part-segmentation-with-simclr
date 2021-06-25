@@ -106,11 +106,22 @@ class Flip(RandomAugmentation):
         # points_temp[:, index] = -points_temp[:, index]
 
         ##FROM DEEP CONTRAST
-        #TODO:FLIP ALWAYS SOMEHOW
-        if np.random.random() > 0.5:
+        # if np.random.random() > 0.5:
+        #     # Flipping along the YZ plane
+        #     points_temp[:, 0] = -1 * points_temp[:, 0]
+        # if np.random.random() > 0.5:
+        #     # Flipping along the XZ plane
+        #     points_temp[:, 1] = -1 * points_temp[:, 1]
+
+        if np.random.random() <= 0.33:
             # Flipping along the YZ plane
             points_temp[:, 0] = -1 * points_temp[:, 0]
-        if np.random.random() > 0.5:
+        elif np.random.random() <= 0.66:
+            # Flipping along the XZ plane
+            points_temp[:, 1] = -1 * points_temp[:, 1]
+        else:
+            # Flipping along the YZ plane
+            points_temp[:, 0] = -1 * points_temp[:, 0]
             # Flipping along the XZ plane
             points_temp[:, 1] = -1 * points_temp[:, 1]
 
