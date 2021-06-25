@@ -140,7 +140,7 @@ class SimCLR(pl.LightningModule):
 
     def shared_step(self, batch):
         # final image in tuple is for online eval
-        (img1, img2), y = batch
+        (img1, img2), _ = batch
 
         # get h representations
         h1 = self(img1)

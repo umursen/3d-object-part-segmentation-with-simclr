@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 
 class ShapeNetParts(Dataset):
 
-    def __init__(self, split, transforms):
+    def __init__(self, split, transforms=None, class_choice=None):
         assert split in ['train', 'val', 'test']
 
         self.root = os.getcwd()
@@ -29,8 +29,6 @@ class ShapeNetParts(Dataset):
             for line in f:
                 ls = line.strip().split()
                 self.cat[ls[0]] = ls[1]
-
-        class_choice = ['Airplane']
 
         if not class_choice is None:
             self.cat = {k: v for k, v in self.cat.items() if k in class_choice}
@@ -73,11 +71,18 @@ class ShapeNetParts(Dataset):
                 'seg': seg
             }
             i, j = self.transforms(sample)
-            x = torch.from_numpy(i['point']).T, torch.from_numpy(j['point']).T
-            y = torch.from_numpy(i['seg'])
+
+            x1, y1 = self.resample_points(i['point'], i['seg'])
+            x2, y2 = self.resample_points(j['point'], j['seg'])
+            x = torch.from_numpy(x1).T, torch.from_numpy(x2).T
+            y = torch.from_numpy(y1).T, torch.from_numpy(y2).T
+
+            # x = torch.from_numpy(i['point']).T, torch.from_numpy(j['point']).T
+            # y = torch.from_numpy(i['seg']), torch.from_numpy(j['seg'])
         else:
-            x = torch.from_numpy(point_set)
-            y = torch.from_numpy(seg)
+            x, y = self.resample_points(point_set, seg)
+            x = torch.from_numpy(x).T
+            y = torch.from_numpy(y).T
 
         return x, y
 
@@ -89,16 +94,8 @@ class ShapeNetParts(Dataset):
         point_set = np.loadtxt(fn[1]).astype(np.float32)
         seg = np.loadtxt(fn[2]).astype(np.int64)
         #print(f"point_set.shape, seg.shape:{point_set.shape, seg.shape}")
-
-        choice = np.random.choice(len(seg), self.npoints, replace=True)
-        #resample
-        point_set = point_set[choice, :]
-
-        point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
-        dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
-        point_set = point_set / dist #scale
-
-        seg = seg[choice]
+       # print(f'point_set_size: {point_set.shape}')
+       # print(f'shape size: {seg.shape}')
 
         # if self.data_augmentation:
         #     theta = np.random.uniform(0,np.pi*2)
@@ -115,4 +112,19 @@ class ShapeNetParts(Dataset):
         # print(f"point_set: {point_set.shape}")
         # print(f"seg: {seg.shape}")
 
+        # point_set, seg = self.resample_points(point_set, seg)
+
+        return point_set, seg
+
+    def resample_points(self, point_set, seg):
+
+        choice = np.random.choice(len(seg), self.npoints, replace=True)
+        # resample
+        point_set = point_set[choice, :]
+
+        point_set = point_set - np.expand_dims(np.mean(point_set, axis=0), 0)  # center
+        dist = np.max(np.sqrt(np.sum(point_set ** 2, axis=1)), 0)
+        point_set = point_set / dist  # scale
+
+        seg = seg[choice]
         return point_set, seg

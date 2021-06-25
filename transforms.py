@@ -1,5 +1,6 @@
 from pl_bolts.utils import _OPENCV_AVAILABLE, _TORCHVISION_AVAILABLE
 from pl_bolts.utils.warnings import warn_missing_pkg
+from augmentations.augmentations import RandomCuboid
 
 if _TORCHVISION_AVAILABLE:
     from torchvision import transforms as transforms
@@ -18,7 +19,11 @@ class SimCLRTrainDataTransform(object):
     """
 
     def __init__(self, data_transforms) -> None:
-        self.data_transforms = transforms.Compose(data_transforms)
+        augmentations = transforms.Compose([
+            RandomCuboid(p=1),
+            *data_transforms
+        ])
+        self.data_transforms = augmentations
         # print(self.data_transforms)
 
     def __call__(self, sample):
@@ -36,12 +41,15 @@ class SimCLREvalDataTransform(object):
     """
 
     def __init__(self, data_transforms) -> None:
-        self.data_transforms = transforms.Compose(data_transforms)
+        augmentations = transforms.Compose([
+            RandomCuboid(p=1),
+            *data_transforms
+        ])
+        self.data_transforms = augmentations
         # print(self.data_transforms)
 
     def __call__(self, sample):
         transform = self.data_transforms
-
         xi = transform(sample)
         xj = transform(sample)
 
