@@ -59,6 +59,7 @@ class Projection(nn.Module):
         )
 
     def forward(self, x):
+        x = self.model(x)
         return F.normalize(x, dim=1)
 
 
