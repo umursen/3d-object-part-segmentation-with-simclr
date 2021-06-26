@@ -3,3 +3,4 @@
 __pycache__/
 datasets/shapenet_parts/shapenetcore_partanno_segmentation_benchmark_v0/
 lightning_logs/*
+wandb/*

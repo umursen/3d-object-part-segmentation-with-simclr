@@ -19,7 +19,7 @@ from models.pointnet import PointNetEncoder
 from datasets.data_modules import PartSegmentationUSLDataModule
 from augmentations.augmentations import *
 import pdb
-
+from util.logger import get_logger
 
 class SyncFunction(torch.autograd.Function):
 
@@ -341,6 +341,7 @@ def cli_main():
     print(args.gpus)
 
     trainer = pl.Trainer(
+        logger=get_logger(),
         max_epochs=args.max_epochs,
         max_steps=None if args.max_steps == -1 else args.max_steps,
         gpus=args.gpus,

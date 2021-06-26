@@ -8,6 +8,7 @@ import pytorch_lightning as pl
 import torch
 from torch.nn import functional as F
 from torchmetrics import Accuracy
+from util.logger import get_logger
 
 
 class SSLFineTuner(pl.LightningModule):
@@ -186,6 +187,7 @@ def cli_main():
     )
 
     trainer = pl.Trainer(
+        logger=get_logger(),
         gpus=args.gpus,
         num_nodes=1,
         precision=16,
