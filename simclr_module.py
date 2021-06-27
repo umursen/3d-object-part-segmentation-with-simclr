@@ -264,7 +264,7 @@ class SimCLR(pl.LightningModule):
         # model params
         parser.add_argument("--arch", default="pointnet", type=str, help="architecture")
         # specify flags to store false
-        parser.add_argument("--hidden_mlp", default=2048, type=int, help="hidden layer dimension in projection head")
+        parser.add_argument("--hidden_mlp", default=1024, type=int, help="hidden layer dimension in projection head")
         parser.add_argument("--feat_dim", default=128, type=int, help="feature dimension")
         parser.add_argument("--online_ft", action='store_true')
         parser.add_argument("--fp32", action='store_true')
