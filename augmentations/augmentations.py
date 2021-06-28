@@ -238,7 +238,6 @@ class Rotation(RandomAugmentation):
         return {'point': points_temp, 'seg': seg_temp}
 
 
-
 class RandomCuboid(RandomAugmentation):
     """
     Flip the object over x or y axis.
@@ -252,7 +251,7 @@ class RandomCuboid(RandomAugmentation):
     out (ndarray) : Augmentated 3D object
     """
 
-    def __init__(self, p, random_crop=True, crop=0.5, randcrop=1, aspect=0.75, dist_sample=True, npoints=1):
+    def __init__(self, p, random_crop=True, crop=0.7, randcrop=1.5, aspect=0.75, dist_sample=True, npoints=200):
         super().__init__(p)
         self.random_crop = random_crop
         self.crop = crop
@@ -273,7 +272,7 @@ class RandomCuboid(RandomAugmentation):
         range_xyz = np.max(points_temp[:, 0:3], axis=0) - np.min(points_temp[:, 0:3], axis=0)
         if self.random_crop:
             crop_range = float(self.crop) + np.random.rand(3) * (
-                        float(self.randcrop) - float(self.crop))
+                        float(self.randcrop) - float(self.crop)) # 0.5-1.5
             if self.aspect:
                 loop_count = 0
                 while not check_aspect(crop_range, float(self.aspect)):
@@ -313,6 +312,7 @@ class RandomCuboid(RandomAugmentation):
             lower_idx = np.sum((points_temp[:, 0:3] >= min_xyz).astype(np.int32), 1) == 3
 
             new_pointidx = (upper_idx) & (lower_idx)
+            # print('sum:', np.sum(new_pointidx))
 
             if (loop_count > 100) or (np.sum(new_pointidx) > float(self.npoints)):
                 break
