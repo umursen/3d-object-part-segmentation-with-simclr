@@ -46,13 +46,9 @@ class PointNetEncoder(nn.Module):
         else:
             return x
 
-
-class PointNetSegmentation(nn.Module):
-
-    # TODO: Implement PointNet segmentation part
-    def __init__(self, num_classes):
-        super(PointNetSegmentation, self).__init__()
-        self.encoder = PointNetEncoder(return_point_features=True)
+class PointNetDecoder(nn.Module):
+    def __init__(self,num_classes):
+        super(PointNetDecoder, self).__init__()
         self.num_classes = num_classes
 
         self.concattenated_features = 1088
@@ -66,9 +62,7 @@ class PointNetSegmentation(nn.Module):
         self.bn3 = nn.BatchNorm1d(128)
 
         self.relu = nn.ReLU()
-        
-    def forward(self, x):
-        x = self.encoder(x) # Concatenated features
+    def forward(self,x):
         x = self.relu(self.bn1(self.conv1(x)))
         x = self.relu(self.bn2(self.conv2(x)))
         x = self.relu(self.bn3(self.conv3(x)))
@@ -77,6 +71,17 @@ class PointNetSegmentation(nn.Module):
         x = x.transpose(2, 1).contiguous()
         return x
 
+class PointNetSegmentation(nn.Module):
+
+    def __init__(self, num_classes):
+        super(PointNetSegmentation, self).__init__()
+        self.encoder = PointNetEncoder(return_point_features=True)
+        self.decoder = PointNetDecoder(num_classes)
+        
+    def forward(self, x):
+        x = self.encoder(x) # Concatenated features
+        x = self.decoder(x)
+        return x
 
 class TNet(nn.Module):
     '''
