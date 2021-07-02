@@ -13,6 +13,8 @@ else:  # pragma: no cover
     warn_missing_pkg('cv2', pypi_name='opencv-python')
 
 
+# Self-supervised
+
 class SimCLRTrainDataTransform(object):
     """
     Transforms for SimCLR
@@ -54,3 +56,37 @@ class SimCLREvalDataTransform(object):
         xj = transform(sample)
 
         return xi, xj
+
+# Fine-tuning
+
+class FineTuningTrainDataTransform(object):
+    """
+    Transforms for SimCLR
+    """
+
+    def __init__(self, data_transforms) -> None:
+        self.data_transforms = data_transforms
+
+    def __call__(self, sample):
+        transform = self.data_transforms
+
+        xi = transform(sample)
+
+        return xi
+
+
+class FineTuningEvalDataTransform(object):
+    """
+    Transforms for SimCLR
+    """
+
+    def __init__(self, data_transforms) -> None:
+        self.data_transforms = data_transforms
+
+    def __call__(self, sample):
+        transform = self.data_transforms
+        xi = transform(sample)
+        xj = transform(sample)
+
+        return xi, xj
+
