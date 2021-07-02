@@ -79,12 +79,10 @@ class ShapeNetParts(Dataset):
         if limit_ratio:
             limited_datapaths = []
             for k, v in self.cat.items():
-                class_paths = list(filter(lambda x: v in x, self.datapath))
-                selected_class_paths = np.random.choice(int(len(class_paths)/limit_ratio))
-                limited_datapaths += np.asarray(class_paths)[selected_class_paths]
+                class_paths = list(filter(lambda x: k==x[0], self.datapath))
+                selected_class_paths = np.random.choice(len(class_paths), int(len(class_paths)*limit_ratio))
+                limited_datapaths += list(np.asarray(class_paths)[selected_class_paths])
             self.datapath = limited_datapaths
-
-        # pdb.set_trace()
 
     def __getitem__(self, index):
         point_set, seg = self.get_point_cloud_with_labels(index)
