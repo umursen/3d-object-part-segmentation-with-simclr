@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 
-from pl_bolts.models.self_supervised.simclr.simclr_module import SimCLR
+from simclr_module import SimCLR
 
 from typing import List, Optional
 
@@ -8,6 +8,12 @@ import pytorch_lightning as pl
 import torch
 from torch.nn import functional as F
 from torchmetrics import Accuracy
+
+from models.pointnet import PointNetDecoder
+from transforms import FineTuningEvalDataTransform, FineTuningTrainDataTransform
+from datasets.data_modules import PartSegmentationDataModule
+from augmentations.augmentations import *
+import pdb
 from util.logger import get_logger
 
 
@@ -19,7 +25,7 @@ class SSLFineTuner(pl.LightningModule):
     def __init__(
         self,
         backbone: torch.nn.Module,
-        in_features: int = 2048,
+        in_features: int = 1024,
         num_classes: int = 1000,
         epochs: int = 100,
         hidden_dim: Optional[int] = None,
@@ -52,9 +58,10 @@ class SSLFineTuner(pl.LightningModule):
         self.final_lr = final_lr
 
         self.backbone = backbone
+        self.backbone.encoder.return_point_features = True
 
         # Define fine-tuning model
-        self.linear_layer = ... # SSLEvaluator(n_input=in_features, n_classes=num_classes, p=dropout, n_hidden=hidden_dim)
+        self.decoder = PointNetDecoder(num_classes)
 
         # metrics
         self.train_acc = Accuracy()
@@ -98,15 +105,15 @@ class SSLFineTuner(pl.LightningModule):
         with torch.no_grad():
             feats = self.backbone(x)
 
-        feats = feats.view(feats.size(0), -1)
-        logits = self.linear_layer(feats)
+        logits = self.decoder(feats)
+        pdb.set_trace()
         loss = F.cross_entropy(logits, y)
 
         return loss, logits, y
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(
-            self.linear_layer.parameters(),
+            self.decoder.parameters(),
             lr=self.learning_rate,
             nesterov=self.nesterov,
             momentum=0.9,
@@ -135,11 +142,11 @@ def cli_main():
 
     parser.add_argument("--batch_size", default=64, type=int, help="batch size per gpu")
     parser.add_argument("--num_workers", default=8, type=int, help="num of workers per GPU")
-    parser.add_argument("--gpus", default=4, type=int, help="number of GPUs")
+    parser.add_argument("--gpus", default=1, type=int, help="number of GPUs")
     parser.add_argument('--num_epochs', default=100, type=int, help="number of epochs")
 
     # fine-tuner params
-    parser.add_argument('--in_features', type=int, default=2048)
+    parser.add_argument('--in_features', type=int, default=1024)
     parser.add_argument('--dropout', type=float, default=0.)
     parser.add_argument('--learning_rate', type=float, default=0.3)
     parser.add_argument('--weight_decay', type=float, default=1e-6)
@@ -147,14 +154,26 @@ def cli_main():
     parser.add_argument('--gamma', type=float, default=0.1)
     parser.add_argument('--final_lr', type=float, default=0.)
 
+    parser.add_argument('--nesterov', type=float, default=0.)
+
     args = parser.parse_args()
 
     if args.dataset == 'all':
         # TODO: Set data loader
         dm = ...
     elif args.dataset == 'shapenet':
-        # TODO: Set data loader
-        dm = ...
+        dm = PartSegmentationDataModule(args.batch_size, limit_ratio=0.1, fine_tuning=True)
+
+        dm.train_transforms = FineTuningTrainDataTransform([
+            GaussianWhiteNoise(p=0.7),
+            Rotation(0.5)
+        ])
+        dm.val_transforms = FineTuningEvalDataTransform([
+            GaussianWhiteNoise(p=0.7),
+            Rotation(0.5)
+        ])
+
+        args.num_seg_classes = dm.num_seg_classes
     elif args.dataset == 'coseg':
         # TODO: Set data loader
         dm = ...
@@ -166,7 +185,7 @@ def cli_main():
     backbone = SimCLR(
         gpus=args.gpus,
         nodes=1,
-        num_samples=args.num_samples,
+        num_samples=0,
         batch_size=args.batch_size,
         dataset=args.dataset,
     ).load_from_checkpoint(args.ckpt_path, strict=False)
@@ -174,7 +193,7 @@ def cli_main():
     tuner = SSLFineTuner(
         backbone,
         in_features=args.in_features,
-        num_classes=dm.num_classes,
+        num_classes=args.num_seg_classes,
         epochs=args.num_epochs,
         hidden_dim=None,
         dropout=args.dropout,
