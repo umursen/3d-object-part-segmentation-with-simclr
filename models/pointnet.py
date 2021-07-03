@@ -46,8 +46,9 @@ class PointNetEncoder(nn.Module):
         else:
             return x
 
+
 class PointNetDecoder(nn.Module):
-    def __init__(self,num_classes):
+    def __init__(self, num_classes):
         super(PointNetDecoder, self).__init__()
         self.num_classes = num_classes
 
@@ -62,6 +63,7 @@ class PointNetDecoder(nn.Module):
         self.bn3 = nn.BatchNorm1d(128)
 
         self.relu = nn.ReLU()
+
     def forward(self,x):
         x = self.relu(self.bn1(self.conv1(x)))
         x = self.relu(self.bn2(self.conv2(x)))
@@ -70,6 +72,7 @@ class PointNetDecoder(nn.Module):
 
         x = x.transpose(2, 1).contiguous()
         return x
+
 
 class PointNetSegmentation(nn.Module):
 

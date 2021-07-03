@@ -6,11 +6,12 @@ import os.path
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+import pdb
 
 
 class ShapeNetParts(Dataset):
 
-    def __init__(self, split, transforms=None, class_choice=None):
+    def __init__(self, split, limit_ratio, transforms=None, class_choice=None, fine_tuning=False):
         assert split in ['train', 'val', 'test']
 
         self.root = os.getcwd()
@@ -24,6 +25,7 @@ class ShapeNetParts(Dataset):
         self.datapath = []
         self.npoints = 2500
         self.data_augmentation = False
+        self.fine_tuning = fine_tuning
 
         with open(self.catfile, 'r') as f:
             for line in f:
@@ -57,10 +59,30 @@ class ShapeNetParts(Dataset):
             for line in f:
                 ls = line.strip().split()
                 self.seg_classes[ls[0]] = int(ls[1])
-        self.num_seg_classes = self.seg_classes[list(self.cat.keys())[0]]
+                print(ls)
+        self.num_seg_classes = sum(self.seg_classes.values())
+
+        # Segmentation label mapping
+        index = 0
+        self.seg_class_map = {}
+        for k, v in self.seg_classes.items():
+            # if k not in self.seg_class_map.keys():
+            self.seg_class_map[k] = {}
+            for class_index in range(v):
+                self.seg_class_map[k][class_index+1] = index
+                index += 1
 
         # Transforms
         self.transforms = transforms
+
+        # Limit dataset
+        if limit_ratio:
+            limited_datapaths = []
+            for k, v in self.cat.items():
+                class_paths = list(filter(lambda x: k==x[0], self.datapath))
+                selected_class_paths = np.random.choice(len(class_paths), int(len(class_paths)*limit_ratio))
+                limited_datapaths += list(np.asarray(class_paths)[selected_class_paths])
+            self.datapath = limited_datapaths
 
     def __getitem__(self, index):
         point_set, seg = self.get_point_cloud_with_labels(index)
@@ -70,12 +92,19 @@ class ShapeNetParts(Dataset):
                 'point': point_set,
                 'seg': seg
             }
-            i, j = self.transforms(sample)
+            if self.fine_tuning:
+                i = self.transforms(sample)
 
-            x1, y1 = self.resample_points(i['point'], i['seg'])
-            x2, y2 = self.resample_points(j['point'], j['seg'])
-            x = torch.from_numpy(x1).T, torch.from_numpy(x2).T
-            y = torch.from_numpy(y1).T, torch.from_numpy(y2).T
+                x, y = self.resample_points(i['point'], i['seg'])
+                x = torch.from_numpy(x).T
+                y = torch.from_numpy(y).T
+            else:
+                i, j = self.transforms(sample)
+
+                x1, y1 = self.resample_points(i['point'], i['seg'])
+                x2, y2 = self.resample_points(j['point'], j['seg'])
+                x = torch.from_numpy(x1).T, torch.from_numpy(x2).T
+                y = torch.from_numpy(y1).T, torch.from_numpy(y2).T
 
             # x = torch.from_numpy(i['point']).T, torch.from_numpy(j['point']).T
             # y = torch.from_numpy(i['seg']), torch.from_numpy(j['seg'])
@@ -89,30 +118,13 @@ class ShapeNetParts(Dataset):
     def __len__(self):
         return len(self.datapath)
 
-    def get_point_cloud_with_labels(self,index):
+    def get_point_cloud_with_labels(self, index):
         fn = self.datapath[index]
         point_set = np.loadtxt(fn[1]).astype(np.float32)
         seg = np.loadtxt(fn[2]).astype(np.int64)
-        #print(f"point_set.shape, seg.shape:{point_set.shape, seg.shape}")
-       # print(f'point_set_size: {point_set.shape}')
-       # print(f'shape size: {seg.shape}')
 
-        # if self.data_augmentation:
-        #     theta = np.random.uniform(0,np.pi*2)
-        #     rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
-        #     point_set[:,[0,2]] = point_set[:,[0,2]].dot(rotation_matrix) # random rotation
-        #     point_set += np.random.normal(0, 0.02, size=point_set.shape) # random jitter
-
-        # if self.transform:
-        #     input = {"point": point_set, "seg": seg}
-        #     input = self.transform(input)
-        #     point_set = input['point']
-        #     seg = input['seg']
-
-        # print(f"point_set: {point_set.shape}")
-        # print(f"seg: {seg.shape}")
-
-        # point_set, seg = self.resample_points(point_set, seg)
+        class_name = fn[0]
+        seg = np.asarray(list(map(lambda label: self.seg_class_map[class_name][label], seg)), dtype=np.int64)
 
         return point_set, seg
 

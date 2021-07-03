@@ -16,7 +16,7 @@ from optimizers.lars import LARS
 from optimizers.lr_scheduler import linear_warmup_decay
 
 from models.pointnet import PointNetEncoder
-from datasets.data_modules import PartSegmentationUSLDataModule
+from datasets.data_modules import PartSegmentationDataModule
 from augmentations.augmentations import *
 import pdb
 from util.logger import get_logger
@@ -308,8 +308,7 @@ def cli_main():
         # TODO: Set data loader
         dm = ...
     elif args.dataset == 'shapenet':
-        # TODO: Set data loader
-        dm = PartSegmentationUSLDataModule(args.batch_size)
+        dm = PartSegmentationDataModule(args.batch_size)
 
         dm.train_transforms = SimCLRTrainDataTransform([
             GaussianWhiteNoise(p=0.7),
@@ -358,7 +357,8 @@ def cli_main():
         sync_batchnorm=True if args.gpus > 1 else False,
         precision=32 if args.fp32 else 16,
         callbacks=callbacks,
-        fast_dev_run=args.fast_dev_run
+        fast_dev_run=args.fast_dev_run,
+        # resume_from_checkpoint='wandb/run-20210628_134313-21062813431126/files/3dpart-simclr/21062813431126/checkpoints/last.ckpt'
     )
 
     trainer.fit(model, datamodule=dm)
