@@ -9,13 +9,11 @@ from datasets.shapenet_parts.shapenet_parts import ShapeNetParts
 class SSLOnlineEvaluator(Callback):
     def __init__(
         self,
-        dataset: str,
-        z_dim: int = None,
+        z_dim: int = 1088,
         num_classes: int = None):
         
         self.z_dim = z_dim
         self.num_classes = num_classes
-        self.dataset = dataset
 
     def on_pretrain_routine_start(self,trainer: Trainer, pl_module: LightningModule) -> None:
         from models.pointnet import PointNetDecoder
@@ -27,12 +25,14 @@ class SSLOnlineEvaluator(Callback):
         return representations
 
     def to_device(self, batch, device):
-        #val_dataset = ShapeNetParts('val',transforms=None)
-        point, seg = batch
-        point = point.to(device)
-        seg = seg.to(device)
+        inputs, y = batch
 
-        return point,seg
+        # last input is for online eval
+        x = inputs[-1]
+        x = x.to(device)
+        y = y.to(device)
+
+        return x, y
 
     def on_train_batch_end(
         self,
@@ -50,7 +50,7 @@ class SSLOnlineEvaluator(Callback):
         representations = representations.detach()
         decoder_logits = pl_module.non_linear_evaluator(representations)
         decoder_loss = F.cross_entropy(decoder_logits,y)
-
+        
         # Finetune decoder 
         decoder_loss.backward()
         self.optimizer.step()
@@ -82,3 +82,26 @@ class SSLOnlineEvaluator(Callback):
 
         # Log metrics
         pl_module.log('online_val_loss', decoder_loss, on_step=False, on_epoch=True, sync_dist=True)
+'''
+    def on_train_epoch_end(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+    ) -> None:
+        x,y = self.to_device(pl_module.device) # x tilda
+        with torch.no_grad():
+            representations = self.get_representations(pl_module,x) # No train for encoder. This is h.
+
+        representations = representations.detach()
+        decoder_logits = pl_module.non_linear_evaluator(representations)
+        decoder_loss = F.cross_entropy(decoder_logits,y)
+
+        # Finetune decoder 
+        decoder_loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+
+        # Log Metrics
+        # TODO: Can add accuracy IoU later. For now it is only loss.
+        pl_module.log('online_train_loss', decoder_loss, on_step=True, on_epoch=False)
+'''

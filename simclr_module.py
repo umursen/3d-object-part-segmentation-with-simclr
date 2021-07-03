@@ -21,6 +21,8 @@ from augmentations.augmentations import *
 import pdb
 from util.logger import get_logger
 
+from callbacks.online_evaluator import SSLOnlineEvaluator
+
 class SyncFunction(torch.autograd.Function):
 
     @staticmethod
@@ -329,16 +331,21 @@ def cli_main():
 
     model = SimCLR(**args.__dict__)
 
-    # # Let's remove this for now (umur)
-    # online_evaluator = None
-    # if args.online_ft and False:
-    #     # online eval
-    #     online_evaluator = ...
+    online_evaluator = SSLOnlineEvaluator()
+    if args.online_ft:
+        online_evaluator = SSLOnlineEvaluator(
+            z_dim = 1088,
+            num_classes = dm.num_classes
+        )
 
     lr_monitor = LearningRateMonitor(logging_interval="step")
     model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='val_loss')
-    callbacks = [model_checkpoint, lr_monitor]
-
+    model_checkpoint_online = ModelCheckpoint(save_last=True, save_top_k=1, monitor='online_val_loss')
+    callbacks = [model_checkpoint, online_evaluator, model_checkpoint_online] if args.online_ft else [model_checkpoint, lr_monitor]
+    
+    # TODO Q: Shouldn't we add this? 
+    #callbacks.append(lr_monitor)
+    
     print(args.gpus)
 
     trainer = pl.Trainer(
