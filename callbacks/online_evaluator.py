@@ -17,22 +17,24 @@ class SSLOnlineEvaluator(Callback):
 
     def on_pretrain_routine_start(self,trainer: Trainer, pl_module: LightningModule) -> None:
         from models.pointnet import PointNetDecoder
-        pl_module.non_linear_evaluator = PointNetDecoder(num_classes=self.num_classes).to(pl_module.device)
-        self.optimizer = torch.optim.Adam(pl_module.non_linear_evaluator.parameters(),lr=1e-4)
+        pl_module.decoder = PointNetDecoder(num_classes=self.num_classes).to(pl_module.device)
+        self.optimizer = torch.optim.Adam(pl_module.decoder.parameters(),lr=1e-4)
 
-    def get_representations(self, pl_module: LightningModule, x: Tensor) -> Tensor:
-        representations = pl_module(x)
+    def get_representations(self, pl_module: LightningModule, x: Tensor, class_id: Tensor) -> Tensor:
+        representations = pl_module(x, class_id)
         return representations
 
     def to_device(self, batch, device):
-        inputs, y = batch
+        inputs, y, class_id = batch
 
         # last input is for online eval
-        x = inputs[-1]
-        x = x.to(device)
-        y = y.to(device)
+        x_online = inputs[-1]
+        y_online = y[-1]
+        x_online = x_online.to(device)
+        y_online = y_online.to(device)
+        class_id = class_id.to(device)
 
-        return x, y
+        return x_online, y_online, class_id
 
     def on_train_batch_end(
         self,
@@ -43,12 +45,13 @@ class SSLOnlineEvaluator(Callback):
         batch_idx: int,
         dataloader_idx: int,
     ) -> None:
-        x,y = self.to_device(batch,pl_module.device)
+        x, y, class_id = self.to_device(batch,pl_module.device)
         with torch.no_grad():
-            representations = self.get_representations(pl_module,x) # No train for encoder.
+            representations = self.get_representations(pl_module, x, class_id) # No train for encoder.
 
         representations = representations.detach()
-        decoder_logits = pl_module.non_linear_evaluator(representations)
+        decoder_logits = pl_module.decoder(representations) # TODO: Check if we need class id here.
+        # TODO: We need transpose for decoder_logits
         decoder_loss = F.cross_entropy(decoder_logits,y)
         
         # Finetune decoder 
@@ -57,7 +60,6 @@ class SSLOnlineEvaluator(Callback):
         self.optimizer.zero_grad()
 
         # Log Metrics
-        # TODO: Can add accuracy IoU later. For now it is only loss.
         pl_module.log('online_train_loss', decoder_loss, on_step=True, on_epoch=False)
 
     def on_validation_batch_end(
@@ -69,16 +71,18 @@ class SSLOnlineEvaluator(Callback):
         batch_idx: int,
         dataloader_idx: int,
     ) -> None:
-        x, y = self.to_device(batch, pl_module.device)
+        x, y, class_id = self.to_device(batch, pl_module.device)
 
         with torch.no_grad():
-            representations = self.get_representations(pl_module, x)
+            representations = self.get_representations(pl_module, x, class_id)
 
         representations = representations.detach()
 
-        
-        decoder_logits = pl_module.non_linear_evaluator(representations)
+        # TODO: Check if we need class id here.
+        # TODO: We need transpose for decoder_logits
+        decoder_logits = pl_module.decoder(representations)
         decoder_loss = F.cross_entropy(decoder_logits, y)
 
         # Log metrics
+        # TODO: Can add accuracy IoU later. For now it is only loss.
         pl_module.log('online_val_loss', decoder_loss, on_step=False, on_epoch=True, sync_dist=True)
