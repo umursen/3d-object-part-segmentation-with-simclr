@@ -16,7 +16,6 @@ class PartSegmentationDataModule(LightningDataModule):
 
         self.num_seg_classes, self.num_classes, self.npoints, self.seg_class_map = self.get_number_of_seg_classes()
 
-
     def get_number_of_seg_classes(self):
         data = ShapeNetParts('train', transforms=self.train_transforms, limit_ratio=self.limit_ratio,
                              fine_tuning=self.fine_tuning)

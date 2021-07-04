@@ -13,11 +13,10 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-from torch import nn
-from torch.nn import functional as F
 from models.pointnet import PointNetEncoder, PointNetSegmentation, get_supervised_loss
 from util.logger import get_logger
 
+import pdb
 
 def to_categorical(y, num_classes):  #num
     """ 1-hot encodes a tensor """
@@ -155,26 +154,20 @@ class SupervisedPointNet(pl.LightningModule):
         train_instance_acc = np.mean(mean_corrects)
         self.log('train_acc', train_instance_acc, on_step=False, on_epoch=True)
 
-    def validation_step(self, batch, batch_idx):
-        # x, y, cls_id = batch
-        # print(f'cls_id: {cls_id}')
-        # print(f'to_categorical: {to_categorical(cls_id, self.num_classes)}')
-        # prediction = self.model(x, to_categorical(cls_id, self.num_classes))
-        # loss = self.loss_criterion(prediction, y)
-        # acc, iou = self.shared_step(y, prediction)
-        #
-        # self.log({'val_loss': loss, 'val_acc': acc, 'val_iou': iou}, on_step=False, on_epoch=True, sync_dist=True)
+
+    # TEST AND VAL
+    def test_val_shared_step(self, batch):
         x, y, cls_id = batch
-        cur_batch_size, NUM_POINT, _ = x.size()
+        cur_batch_size, _, NUM_POINT = x.size()
         prediction, _ = self.model(x, to_categorical(cls_id, self.num_classes))
-        prediction = prediction.contiguous().view(-1, self.num_seg_classes)
+        # prediction = prediction.view(-1, self.num_seg_classes) # TODO: MODIFIED HERE
         cur_pred_val = prediction.cpu().data.numpy()
         cur_pred_val_logits = cur_pred_val
         cur_pred_val = np.zeros((cur_batch_size, NUM_POINT)).astype(np.int32)
         target = y.cpu().data.numpy()
 
-        loss = self.loss_criterion(prediction, target)
-        self.log('val_loss', loss, on_step=True, on_epoch=False)
+        # loss = self.loss_criterion(prediction.contiguous().view(cur_batch_size, -1, self.num_seg_classes), target)
+        # self.log('val_loss', loss, on_step=True, on_epoch=False)
 
         for i in range(cur_batch_size):
             cat = self.seg_label_to_cat[target[i, 0]]
@@ -207,21 +200,19 @@ class SupervisedPointNet(pl.LightningModule):
                         np.sum((segl == l) | (segp == l)))
             shape_ious[cat].append(np.mean(part_ious))
 
-
         # self.log('instance_avg_iou', iou, on_step=False, on_epoch=True, sync_dist=True)
         return {'total_correct': total_correct,
                 'total_seen': total_seen, 'total_seen_class': total_seen_class,
                 'total_correct_class': total_correct_class, 'shape_ious': shape_ious}
 
-    def validation_epoch_end(self, validation_epoch_outputs):
+    def test_val_shared_epoch(self, outputs):
         total_correct = 0
         total_seen = 0
         total_seen_class = np.zeros(self.num_seg_classes)
         total_correct_class = np.zeros(self.num_seg_classes)
         shape_ious = {cat: [] for cat in self.seg_class_map.keys()}
 
-
-        for output in validation_epoch_outputs:
+        for output in outputs:
             total_correct += output['total_correct']
             total_seen += output['total_seen']
             total_seen_class += output['total_seen_class']
@@ -237,25 +228,37 @@ class SupervisedPointNet(pl.LightningModule):
                 all_shape_ious.append(iou)
             shape_ious[cat] = np.mean(shape_ious[cat])
         mean_shape_ious = np.mean(list(shape_ious.values()))
-        self.log('accuracy', total_correct / float(total_seen), on_step=False, on_epoch=True, sync_dist=True)
-        self.log('class_avg_accuracy', np.mean(
-            np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float)), on_step=False, on_epoch=True, sync_dist=True)
+        return shape_ious, \
+               total_correct / float(total_seen),\
+               np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float)),\
+               mean_shape_ious,\
+               np.mean(all_shape_ious)
+
+    def validation_step(self, batch, batch_idx):
+        return self.test_val_shared_step(batch)
+
+    def validation_epoch_end(self, validation_epoch_outputs):
+        shape_ious, accuracy, class_avg_accuracy, class_avg_iou, instance_avg_iou = self.test_val_shared_epoch(validation_epoch_outputs)
+        self.log('val_accuracy', accuracy, on_step=False, on_epoch=True, sync_dist=True)
+        self.log('val_class_avg_accuracy', class_avg_accuracy, on_step=False, on_epoch=True, sync_dist=True) # NAN
 
         for cat in sorted(shape_ious.keys()):
             print('eval mIoU of %s %f' % (cat + ' ' * (14 - len(cat)), shape_ious[cat]))
-        self.log('class_avg_iou', mean_shape_ious, on_step=False, on_epoch=True, sync_dist=True)
-        self.log('instance_avg_iou', np.mean(all_shape_ious), on_step=False, on_epoch=True, sync_dist=True)
-
-
+        self.log('val_class_avg_iou', class_avg_iou, on_step=False, on_epoch=True, sync_dist=True) # NAN
+        self.log('val_instance_avg_iou', instance_avg_iou, on_step=False, on_epoch=True, sync_dist=True)
 
     def test_step(self, batch, batch_idx):
-        x, y, cls_id = batch
-        prediction = self.model(x, to_categorical(cls_id, self.num_classes))
-        loss = self.loss_criterion(prediction, y)
-        acc, iou = self.shared_step(y, prediction)
+        return self.test_val_shared_step(batch)
 
-        self.log({'test_loss': loss, 'test_acc': acc, 'test_iou': iou}, on_step=False, on_epoch=True, sync_dist=True)
-        return {'loss': loss, 'accuracy': acc, 'iou': iou}
+    def test_epoch_end(self, validation_epoch_outputs):
+        shape_ious, accuracy, class_avg_accuracy, class_avg_iou, instance_avg_iou = self.test_val_shared_epoch(validation_epoch_outputs)
+        self.log('test_accuracy', accuracy, on_step=False, on_epoch=True, sync_dist=True)
+        self.log('test_class_avg_accuracy', class_avg_accuracy, on_step=False, on_epoch=True, sync_dist=True) # NAN
+
+        for cat in sorted(shape_ious.keys()):
+            print('eval mIoU of %s %f' % (cat + ' ' * (14 - len(cat)), shape_ious[cat]))
+        self.log('test_class_avg_iou', class_avg_iou, on_step=False, on_epoch=True, sync_dist=True) # NAN
+        self.log('test_instance_avg_iou', instance_avg_iou, on_step=False, on_epoch=True, sync_dist=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
@@ -295,18 +298,19 @@ def cli_main():
     parser = SupervisedPointNet.add_model_specific_args(parser)
     args = parser.parse_args()
 
-
     lr_monitor = LearningRateMonitor(logging_interval="step")
     model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='instance_avg_iou', mode='max')
     callbacks = [model_checkpoint, lr_monitor]
 
     print(args.gpus)
 
-    dm = PartSegmentationDataModule(batch_size=args.batch_size, limit_ratio=0.05, num_workers=8)
+    dm = PartSegmentationDataModule(batch_size=args.batch_size, fine_tuning=True)
 
     args.num_seg_classes = dm.num_seg_classes
     args.num_classes = dm.num_classes
     args.npoints = dm.npoints
+    args.seg_class_map = dm.seg_class_map
+
     model = SupervisedPointNet(**args.__dict__)
 
 
