@@ -82,26 +82,3 @@ class SSLOnlineEvaluator(Callback):
 
         # Log metrics
         pl_module.log('online_val_loss', decoder_loss, on_step=False, on_epoch=True, sync_dist=True)
-'''
-    def on_train_epoch_end(
-        self,
-        trainer: Trainer,
-        pl_module: LightningModule,
-    ) -> None:
-        x,y = self.to_device(pl_module.device) # x tilda
-        with torch.no_grad():
-            representations = self.get_representations(pl_module,x) # No train for encoder. This is h.
-
-        representations = representations.detach()
-        decoder_logits = pl_module.non_linear_evaluator(representations)
-        decoder_loss = F.cross_entropy(decoder_logits,y)
-
-        # Finetune decoder 
-        decoder_loss.backward()
-        self.optimizer.step()
-        self.optimizer.zero_grad()
-
-        # Log Metrics
-        # TODO: Can add accuracy IoU later. For now it is only loss.
-        pl_module.log('online_train_loss', decoder_loss, on_step=True, on_epoch=False)
-'''
