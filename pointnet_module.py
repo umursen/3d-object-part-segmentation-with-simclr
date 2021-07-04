@@ -299,7 +299,7 @@ def cli_main():
     args = parser.parse_args()
 
     lr_monitor = LearningRateMonitor(logging_interval="step")
-    model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='instance_avg_iou', mode='max')
+    model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='val_instance_avg_iou', mode='max')
     callbacks = [model_checkpoint, lr_monitor]
 
     print(args.gpus)
