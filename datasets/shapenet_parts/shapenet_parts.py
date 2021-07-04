@@ -11,7 +11,7 @@ import pdb
 
 class ShapeNetParts(Dataset):
 
-    def __init__(self, split, limit_ratio, transforms=None, class_choice=None, fine_tuning=False):
+    def __init__(self, split, limit_ratio=None, transforms=None, class_choice=None, fine_tuning=False):
         assert split in ['train', 'val', 'test']
 
         self.root = os.getcwd()
@@ -54,12 +54,12 @@ class ShapeNetParts(Dataset):
                 self.datapath.append((item, fn[0], fn[1]))
 
         self.classes = dict(zip(sorted(self.cat), range(len(self.cat))))
+        self.num_classes = len(self.classes)
 
         with open(os.path.join(self.root, 'datasets/shapenet_parts/misc/num_seg_classes.txt'), 'r') as f:
             for line in f:
                 ls = line.strip().split()
                 self.seg_classes[ls[0]] = int(ls[1])
-                print(ls)
         self.num_seg_classes = sum(self.seg_classes.values())
 
         # Segmentation label mapping
@@ -67,9 +67,9 @@ class ShapeNetParts(Dataset):
         self.seg_class_map = {}
         for k, v in self.seg_classes.items():
             # if k not in self.seg_class_map.keys():
-            self.seg_class_map[k] = {}
+            self.seg_class_map[k] = []
             for class_index in range(v):
-                self.seg_class_map[k][class_index+1] = index
+                self.seg_class_map[k].append(index)
                 index += 1
 
         # Transforms
@@ -85,7 +85,7 @@ class ShapeNetParts(Dataset):
             self.datapath = limited_datapaths
 
     def __getitem__(self, index):
-        point_set, seg = self.get_point_cloud_with_labels(index)
+        point_set, seg, class_id = self.get_point_cloud_with_labels(index)
 
         if self.transforms:
             sample = {
@@ -113,7 +113,7 @@ class ShapeNetParts(Dataset):
             x = torch.from_numpy(x).T
             y = torch.from_numpy(y).T
 
-        return x, y
+        return x, y, class_id
 
     def __len__(self):
         return len(self.datapath)
@@ -124,9 +124,9 @@ class ShapeNetParts(Dataset):
         seg = np.loadtxt(fn[2]).astype(np.int64)
 
         class_name = fn[0]
-        seg = np.asarray(list(map(lambda label: self.seg_class_map[class_name][label], seg)), dtype=np.int64)
+        cls_id = self.classes[class_name]
 
-        return point_set, seg
+        return point_set, seg, cls_id
 
     def resample_points(self, point_set, seg):
 
