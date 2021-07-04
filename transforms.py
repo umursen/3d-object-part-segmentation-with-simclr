@@ -27,6 +27,7 @@ class SimCLRTrainDataTransform(object):
         ])
         self.data_transforms = augmentations
 
+        # TODO: Parameterize the crop size
         self.online_transform = transforms.Compose([
             RandomCuboid(p=1),
         ])
@@ -80,14 +81,5 @@ class FineTuningEvalDataTransform(object):
     Transforms for SimCLR
     """
 
-    def __init__(self, data_transforms) -> None:
-        self.data_transforms = transforms.Compose([
-            *data_transforms
-        ])
-
     def __call__(self, sample):
-        transform = self.data_transforms
-        xi = transform(sample)
-
-        return xi
-
+        return sample
