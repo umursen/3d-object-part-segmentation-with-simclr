@@ -26,7 +26,10 @@ class SimCLRTrainDataTransform(object):
             *data_transforms
         ])
         self.data_transforms = augmentations
-        # print(self.data_transforms)
+
+        self.online_transform = transforms.Compose([
+            RandomCuboid(p=1),
+        ])
 
     def __call__(self, sample):
         transform = self.data_transforms
@@ -34,28 +37,25 @@ class SimCLRTrainDataTransform(object):
         xi = transform(sample)
         xj = transform(sample)
 
-        return xi, xj
+        return xi, xj, self.online_transform(sample)
 
 
-class SimCLREvalDataTransform(object):
+class SimCLREvalDataTransform(SimCLRTrainDataTransform):
     """
     Transforms for SimCLR
     """
 
     def __init__(self, data_transforms) -> None:
-        augmentations = transforms.Compose([
-            RandomCuboid(p=1),
-            *data_transforms
-        ])
-        self.data_transforms = augmentations
-        # print(self.data_transforms)
+        super().__init__(data_transforms)
 
     def __call__(self, sample):
         transform = self.data_transforms
+
         xi = transform(sample)
         xj = transform(sample)
 
-        return xi, xj
+        return xi, xj, sample
+
 
 # Fine-tuning
 
@@ -72,7 +72,6 @@ class FineTuningTrainDataTransform(object):
     def __call__(self, sample):
         transform = self.data_transforms
         xi = transform(sample)
-
         return xi
 
 
