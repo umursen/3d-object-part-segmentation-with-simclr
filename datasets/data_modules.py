@@ -14,12 +14,13 @@ class PartSegmentationDataModule(LightningDataModule):
         self.limit_ratio = limit_ratio
         self.fine_tuning = fine_tuning
 
-        self.num_seg_classes = self.get_number_of_seg_classes()
+        self.num_seg_classes, self.num_classes = self.get_number_of_seg_classes()
 
 
     def get_number_of_seg_classes(self):
-        return ShapeNetParts('train', transforms=self.train_transforms, limit_ratio=self.limit_ratio,
-                             fine_tuning=self.fine_tuning).num_seg_classes
+        data = ShapeNetParts('train', transforms=self.train_transforms, limit_ratio=self.limit_ratio,
+                             fine_tuning=self.fine_tuning)
+        return data.num_seg_classes, data.num_classes
 
     def train_dataloader(self):
         dataset = ShapeNetParts('train', transforms=self.train_transforms, limit_ratio=self.limit_ratio,
@@ -34,4 +35,6 @@ class PartSegmentationDataModule(LightningDataModule):
                                            shuffle=False, drop_last=True)
 
     def test_dataloader(self):
-        return None
+        dataset = ShapeNetParts('test', transforms=None)
+        return torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, num_workers=self.num_workers,
+                                           shuffle=False)
