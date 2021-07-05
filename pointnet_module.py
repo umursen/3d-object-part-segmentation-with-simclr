@@ -15,15 +15,8 @@ import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from models.pointnet import PointNetEncoder, PointNetSegmentation, get_supervised_loss
 from util.logger import get_logger
-
+from util.training import to_categorical, test_val_shared_step, test_val_shared_epoch
 import pdb
-
-def to_categorical(y, num_classes):  #num
-    """ 1-hot encodes a tensor """
-    new_y = torch.eye(num_classes)[y.cpu().data.numpy(),]
-    if (y.is_cuda):
-        return new_y.cuda()
-    return new_y
 
 
 def inplace_relu(m):
@@ -112,30 +105,10 @@ class SupervisedPointNet(pl.LightningModule):
             for label in self.seg_class_map[cat]:
                 self.seg_label_to_cat[label] = cat
 
-
-
-    def shared_step(self, y, prediction):
-
-        iou = 0
-        for part in range(self.num_seg_classes):
-            I = torch.sum(torch.logical_and(prediction == part, y == part))
-            U = torch.sum(torch.logical_or(prediction == part, y == part))
-            if U == 0:
-                iou = 1  # If the union of groundtruth and prediction points is empty, then count part IoU as 1
-            else:
-                iou = I / float(U)
-
-        _, predicted_label = torch.max(prediction, dim=1)
-
-        total = predicted_label.numel()
-        correct = (predicted_label == y).sum().item()
-        accuracy = 100 * correct / total
-
-        return accuracy, iou
-
     def training_step(self, batch, batch_idx):
         x, y, cls_id = batch
         prediction, trans_feat = self.model(x, to_categorical(cls_id, self.num_classes))
+
         prediction = prediction.contiguous().view(-1, self.num_seg_classes)
         target = y.view(-1, 1)[:, 0]
         pred_choice = prediction.data.max(1)[1]
@@ -154,109 +127,39 @@ class SupervisedPointNet(pl.LightningModule):
         train_instance_acc = np.mean(mean_corrects)
         self.log('train_acc', train_instance_acc, on_step=False, on_epoch=True)
 
-
-    # TEST AND VAL
-    def test_val_shared_step(self, batch):
+    def validation_step(self, batch, batch_idx):
         x, y, cls_id = batch
-        cur_batch_size, _, NUM_POINT = x.size()
         prediction, _ = self.model(x, to_categorical(cls_id, self.num_classes))
         # prediction = prediction.view(-1, self.num_seg_classes) # TODO: MODIFIED HERE
-        cur_pred_val = prediction.cpu().data.numpy()
-        cur_pred_val_logits = cur_pred_val
-        cur_pred_val = np.zeros((cur_batch_size, NUM_POINT)).astype(np.int32)
-        target = y.cpu().data.numpy()
 
-        # loss = self.loss_criterion(prediction.contiguous().view(cur_batch_size, -1, self.num_seg_classes), target)
-        # self.log('val_loss', loss, on_step=True, on_epoch=False)
-
-        for i in range(cur_batch_size):
-            cat = self.seg_label_to_cat[target[i, 0]]
-            logits = cur_pred_val_logits[i, :, :]
-            cur_pred_val[i, :] = np.argmax(logits[:, self.seg_class_map[cat]], 1) + self.seg_class_map[cat][0]
-
-        correct = np.sum(cur_pred_val == target)
-        total_correct = correct
-        total_seen = (cur_batch_size * NUM_POINT)
-
-        total_seen_class = np.zeros(self.num_seg_classes)
-        total_correct_class = np.zeros(self.num_seg_classes)
-
-        for l in range(self.num_seg_classes):
-            total_seen_class[l] = np.sum(target == l)
-            total_correct_class[l] = (np.sum((cur_pred_val == l) & (target == l)))
-
-        shape_ious = {cat: [] for cat in self.seg_class_map.keys()}
-        for i in range(cur_batch_size):
-            segp = cur_pred_val[i, :]
-            segl = target[i, :]
-            cat = self.seg_label_to_cat[segl[0]]
-            part_ious = np.zeros(len(self.seg_class_map[cat]))
-            for l in self.seg_class_map[cat]:
-                if (np.sum(segl == l) == 0) and (
-                        np.sum(segp == l) == 0):  # part is not present, no prediction as well
-                    part_ious[l - self.seg_class_map[cat][0]] = 1.0
-                else:
-                    part_ious[l - self.seg_class_map[cat][0]] = np.sum((segl == l) & (segp == l)) / float(
-                        np.sum((segl == l) | (segp == l)))
-            shape_ious[cat].append(np.mean(part_ious))
-
-        # self.log('instance_avg_iou', iou, on_step=False, on_epoch=True, sync_dist=True)
-        return {'total_correct': total_correct,
-                'total_seen': total_seen, 'total_seen_class': total_seen_class,
-                'total_correct_class': total_correct_class, 'shape_ious': shape_ious}
-
-    def test_val_shared_epoch(self, outputs):
-        total_correct = 0
-        total_seen = 0
-        total_seen_class = np.zeros(self.num_seg_classes)
-        total_correct_class = np.zeros(self.num_seg_classes)
-        shape_ious = {cat: [] for cat in self.seg_class_map.keys()}
-
-        for output in outputs:
-            total_correct += output['total_correct']
-            total_seen += output['total_seen']
-            total_seen_class += output['total_seen_class']
-            total_correct_class += output['total_correct_class']
-
-            for cat, values in output['shape_ious'].items():
-                shape_ious[cat] += values
-
-        all_shape_ious = []
-
-        for cat in shape_ious.keys():
-            for iou in shape_ious[cat]:
-                all_shape_ious.append(iou)
-            shape_ious[cat] = np.mean(shape_ious[cat])
-        mean_shape_ious = np.mean(list(shape_ious.values()))
-        return shape_ious, \
-               total_correct / float(total_seen),\
-               np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float)),\
-               mean_shape_ious,\
-               np.mean(all_shape_ious)
-
-    def validation_step(self, batch, batch_idx):
-        return self.test_val_shared_step(batch)
+        return test_val_shared_step(x, y, prediction, self.seg_label_to_cat, self.seg_class_map, self.num_seg_classes)
 
     def validation_epoch_end(self, validation_epoch_outputs):
-        shape_ious, accuracy, class_avg_accuracy, class_avg_iou, instance_avg_iou = self.test_val_shared_epoch(validation_epoch_outputs)
+        shape_ious, accuracy, class_avg_accuracy, class_avg_iou, instance_avg_iou = test_val_shared_epoch(
+            validation_epoch_outputs, num_seg_classes=self.num_seg_classes, seg_class_map=self.seg_class_map)
+
         self.log('val_accuracy', accuracy, on_step=False, on_epoch=True, sync_dist=True)
         self.log('val_class_avg_accuracy', class_avg_accuracy, on_step=False, on_epoch=True, sync_dist=True) # NAN
 
         for cat in sorted(shape_ious.keys()):
-            print('eval mIoU of %s %f' % (cat + ' ' * (14 - len(cat)), shape_ious[cat]))
+            self.log(f'eval mIoU of {cat}', shape_ious[cat], on_step=False, on_epoch=True, sync_dist=True)
         self.log('val_class_avg_iou', class_avg_iou, on_step=False, on_epoch=True, sync_dist=True) # NAN
         self.log('val_instance_avg_iou', instance_avg_iou, on_step=False, on_epoch=True, sync_dist=True)
 
     def test_step(self, batch, batch_idx):
-        return self.test_val_shared_step(batch)
+        x, y, cls_id = batch
+        prediction, _ = self.model(x, to_categorical(cls_id, self.num_classes))
+
+        return test_val_shared_step(x, y, prediction, self.seg_label_to_cat, self.seg_class_map, self.num_seg_classes)
 
     def test_epoch_end(self, validation_epoch_outputs):
-        shape_ious, accuracy, class_avg_accuracy, class_avg_iou, instance_avg_iou = self.test_val_shared_epoch(validation_epoch_outputs)
+        shape_ious, accuracy, class_avg_accuracy, class_avg_iou, instance_avg_iou = test_val_shared_epoch(
+            validation_epoch_outputs, num_seg_classes=self.num_seg_classes, seg_class_map=self.seg_class_map)
         self.log('test_accuracy', accuracy, on_step=False, on_epoch=True, sync_dist=True)
         self.log('test_class_avg_accuracy', class_avg_accuracy, on_step=False, on_epoch=True, sync_dist=True) # NAN
 
         for cat in sorted(shape_ious.keys()):
-            print('test mIoU of %s %f' % (cat + ' ' * (14 - len(cat)), shape_ious[cat]))
+            self.log(f'eval mIoU of {cat}', shape_ious[cat], on_step=False, on_epoch=True, sync_dist=True)
         self.log('test_class_avg_iou', class_avg_iou, on_step=False, on_epoch=True, sync_dist=True) # NAN
         self.log('test_instance_avg_iou', instance_avg_iou, on_step=False, on_epoch=True, sync_dist=True)
 
@@ -304,7 +207,11 @@ def cli_main():
 
     print(args.gpus)
 
-    dm = PartSegmentationDataModule(batch_size=args.batch_size, fine_tuning=True)
+    dm = PartSegmentationDataModule(
+        batch_size=args.batch_size,
+        fine_tuning=True,
+        # limit_ratio=0.05
+    )
 
     args.num_seg_classes = dm.num_seg_classes
     args.num_classes = dm.num_classes

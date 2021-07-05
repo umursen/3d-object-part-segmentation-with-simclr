@@ -1,27 +1,48 @@
-from typing import Sequence, Tuple, Union
+from typing import Sequence
 import torch
-from pytorch_lightning import Callback,LightningModule,Trainer
-from torch import device, Tensor
-from torch.nn import functional as F
+from pytorch_lightning import Callback, LightningModule, Trainer
+from torch import Tensor
+import numpy as np
 
-from datasets.shapenet_parts.shapenet_parts import ShapeNetParts
+from util.training import to_categorical, test_val_shared_step, test_val_shared_epoch
+from models.pointnet import get_supervised_loss
+
 
 class SSLOnlineEvaluator(Callback):
     def __init__(
-        self,
-        z_dim: int = 1088,
-        num_classes: int = None):
-        
-        self.z_dim = z_dim
+            self,
+            num_classes: int = 16,
+            num_seg_classes: int = 50,
+            npoints: int = 2500,
+            seg_class_map: dict = None,
+    ):
         self.num_classes = num_classes
+        self.num_seg_classes = num_seg_classes
+        self.npoints = npoints
+        self.seg_class_map = seg_class_map
 
-    def on_pretrain_routine_start(self,trainer: Trainer, pl_module: LightningModule) -> None:
+        self.seg_label_to_cat = {}  # {0:Airplane, 1:Airplane, ...49:Table}
+        for cat in self.seg_class_map.keys():
+            for label in self.seg_class_map[cat]:
+                self.seg_label_to_cat[label] = cat
+
+        self.loss_criterion = get_supervised_loss()
+
+        self.optimizer = None
+
+        # Results
+        self.loss = []
+        self.mean_correct = []
+
+        self.eval_results = []
+
+    def on_pretrain_routine_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         from models.pointnet import PointNetDecoder
-        pl_module.decoder = PointNetDecoder(num_classes=self.num_classes).to(pl_module.device)
-        self.optimizer = torch.optim.Adam(pl_module.decoder.parameters(),lr=1e-4)
+        pl_module.decoder = PointNetDecoder(part_num=self.num_seg_classes).to(pl_module.device)
+        self.optimizer = torch.optim.Adam(pl_module.decoder.parameters(), lr=1e-4)
 
-    def get_representations(self, pl_module: LightningModule, x: Tensor, class_id: Tensor) -> Tensor:
-        representations = pl_module(x, class_id)
+    def get_representations(self, pl_module: LightningModule, x: Tensor) -> Tensor:
+        representations = pl_module(x)
         return representations
 
     def to_device(self, batch, device):
@@ -45,22 +66,42 @@ class SSLOnlineEvaluator(Callback):
         batch_idx: int,
         dataloader_idx: int,
     ) -> None:
-        x, y, class_id = self.to_device(batch,pl_module.device)
+        x, y, class_id = self.to_device(batch, pl_module.device)
         with torch.no_grad():
-            representations = self.get_representations(pl_module, x, class_id) # No train for encoder.
+            representations, concat, trans_feat = self.get_representations(pl_module, x)  # No train for encoder.
 
-        representations = representations.detach()
-        decoder_logits = pl_module.decoder(representations) # TODO: Check if we need class id here.
-        # TODO: We need transpose for decoder_logits
-        decoder_loss = F.cross_entropy(decoder_logits,y)
-        
-        # Finetune decoder 
-        decoder_loss.backward()
+        # x = x.detach()
+        prediction = pl_module.decoder(
+            representations,
+            x.size(),
+            to_categorical(class_id, self.num_classes),
+            concat
+        )
+
+        #
+        prediction = prediction.contiguous().view(-1, self.num_seg_classes)
+        target = y.view(-1, 1)[:, 0]
+        pred_choice = prediction.data.max(1)[1]
+
+        correct = pred_choice.eq(target.data).cpu().sum()
+        mean_correct = correct.item() / (prediction.shape[0] * self.npoints)
+
+        loss = self.loss_criterion(prediction, target, trans_feat)
+
+        # Finetune decoder
+        loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
 
-        # Log Metrics
-        pl_module.log('online_train_loss', decoder_loss, on_step=True, on_epoch=False)
+        pl_module.log('online_train_loss', loss, on_step=True, on_epoch=False)
+
+        # Save outputs
+        self.loss.append(loss)
+        self.mean_correct.append(mean_correct)
+
+    def on_train_epoch_end(self, trainer, pl_module, outputs):
+        train_instance_acc = np.mean(self.mean_correct)
+        pl_module.log('online_train_acc', train_instance_acc, on_step=False, on_epoch=True)
 
     def on_validation_batch_end(
         self,
@@ -74,15 +115,27 @@ class SSLOnlineEvaluator(Callback):
         x, y, class_id = self.to_device(batch, pl_module.device)
 
         with torch.no_grad():
-            representations = self.get_representations(pl_module, x, class_id)
+            representations, concat, trans_feat = self.get_representations(pl_module, x)
 
-        representations = representations.detach()
+        prediction = pl_module.decoder(
+            representations,
+            x.size(),
+            to_categorical(class_id, self.num_classes),
+            concat
+        )
 
-        # TODO: Check if we need class id here.
-        # TODO: We need transpose for decoder_logits
-        decoder_logits = pl_module.decoder(representations)
-        decoder_loss = F.cross_entropy(decoder_logits, y)
+        self.eval_results.append(test_val_shared_step(
+            x, y, prediction, self.seg_label_to_cat,
+            self.seg_class_map, self.num_seg_classes
+        ))
 
-        # Log metrics
-        # TODO: Can add accuracy IoU later. For now it is only loss.
-        pl_module.log('online_val_loss', decoder_loss, on_step=False, on_epoch=True, sync_dist=True)
+    def on_validation_epoch_end(self, trainer, pl_module):
+        shape_ious, accuracy, class_avg_accuracy, class_avg_iou, instance_avg_iou = test_val_shared_epoch(
+            self.eval_results, self.seg_class_map, self.num_seg_classes)
+        pl_module.log('online_val_accuracy', accuracy, on_step=False, on_epoch=True, sync_dist=True)
+        pl_module.log('online_val_class_avg_accuracy', class_avg_accuracy, on_step=False, on_epoch=True, sync_dist=True) # NAN
+
+        for cat in sorted(shape_ious.keys()):
+            pl_module.log(f'eval mIoU of {cat}', shape_ious[cat], on_step=False, on_epoch=True, sync_dist=True)
+        pl_module.log('online_val_class_avg_iou', class_avg_iou, on_step=False, on_epoch=True, sync_dist=True) # NAN
+        pl_module.log('online_val_instance_avg_iou', instance_avg_iou, on_step=False, on_epoch=True, sync_dist=True)

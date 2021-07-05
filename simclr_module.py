@@ -18,13 +18,13 @@ from optimizers.lr_scheduler import linear_warmup_decay
 from models.pointnet import PointNetEncoder
 from datasets.data_modules import PartSegmentationDataModule
 from augmentations.augmentations import *
-import pdb
 from util.logger import get_logger
+import pdb
 
 from callbacks.online_evaluator import SSLOnlineEvaluator
 
-class SyncFunction(torch.autograd.Function):
 
+class SyncFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, tensor):
         ctx.batch_size = tensor.shape[0]
@@ -56,7 +56,7 @@ class Projection(nn.Module):
 
         self.model = nn.Sequential(
             nn.Linear(self.input_dim, self.hidden_dim), nn.BatchNorm1d(self.hidden_dim), nn.ReLU(),
-            nn.Linear(self.hidden_dim, self.hidden_dim), nn.BatchNorm1d(self.hidden_dim), nn.ReLU(),
+            # nn.Linear(self.hidden_dim, self.hidden_dim), nn.BatchNorm1d(self.hidden_dim), nn.ReLU(),
             nn.Linear(self.hidden_dim, self.output_dim, bias=False)
         )
 
@@ -131,23 +131,22 @@ class SimCLR(pl.LightningModule):
 
     def init_model(self):
         if self.arch == 'pointnet':
-            backbone = PointNetEncoder()
+            backbone = PointNetEncoder(return_point_features=True)
         else:
             raise ValueError('Unknown architecture!')
 
         return backbone
 
     def forward(self, x):
-        # pdb.set_trace()
         return self.encoder(x)
 
     def shared_step(self, batch):
         # final image in tuple is for online eval
-        (img1, img2), _ = batch
+        (img1, img2, _), _, cls_id = batch
 
         # get h representations
-        h1 = self(img1)
-        h2 = self(img2)
+        h1, _, _ = self(img1)
+        h2, _, _ = self(img2)
 
         # get z representations
         z1 = self.projection(h1)
@@ -266,9 +265,9 @@ class SimCLR(pl.LightningModule):
         # model params
         parser.add_argument("--arch", default="pointnet", type=str, help="architecture")
         # specify flags to store false
-        parser.add_argument("--hidden_mlp", default=1024, type=int, help="hidden layer dimension in projection head")
+        parser.add_argument("--hidden_mlp", default=2048, type=int, help="hidden layer dimension in projection head")
         parser.add_argument("--feat_dim", default=128, type=int, help="feature dimension")
-        parser.add_argument("--online_ft", action='store_true')
+        parser.add_argument("--online_ft", default=1, type=int, help='online fine tuning')
         parser.add_argument("--fp32", action='store_true')
 
         # transform params
@@ -308,7 +307,10 @@ def cli_main():
         # TODO: Set data loader
         dm = ...
     elif args.dataset == 'shapenet':
-        dm = PartSegmentationDataModule(args.batch_size)
+        dm = PartSegmentationDataModule(
+            args.batch_size,
+            # limit_ratio=0.05
+        )
 
         dm.train_transforms = SimCLRTrainDataTransform([
             GaussianWhiteNoise(p=0.7),
@@ -330,16 +332,19 @@ def cli_main():
 
     model = SimCLR(**args.__dict__)
 
-    online_evaluator = SSLOnlineEvaluator()
+    online_evaluator = None
+
     if args.online_ft:
         online_evaluator = SSLOnlineEvaluator(
-            z_dim = 1088,
-            num_classes = dm.num_classes
+            num_classes=dm.num_classes,
+            num_seg_classes=dm.num_seg_classes,
+            npoints=dm.npoints,
+            seg_class_map=dm.seg_class_map
         )
 
     lr_monitor = LearningRateMonitor(logging_interval="step")
     model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='val_loss')
-    model_checkpoint_online = ModelCheckpoint(save_last=True, save_top_k=1, monitor='online_val_loss')
+    model_checkpoint_online = ModelCheckpoint(save_last=True, save_top_k=1, monitor='online_val_accuracy')
     callbacks = [model_checkpoint, online_evaluator, model_checkpoint_online] if args.online_ft else [model_checkpoint, lr_monitor]
     
     # TODO Q: Shouldn't we add this? 
@@ -358,7 +363,7 @@ def cli_main():
         precision=32 if args.fp32 else 16,
         callbacks=callbacks,
         fast_dev_run=args.fast_dev_run,
-        # resume_from_checkpoint='wandb/run-20210628_134313-21062813431126/files/3dpart-simclr/21062813431126/checkpoints/last.ckpt'
+        # resume_from_checkpoint=''
     )
 
     trainer.fit(model, datamodule=dm)
