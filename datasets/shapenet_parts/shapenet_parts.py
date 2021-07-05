@@ -99,12 +99,13 @@ class ShapeNetParts(Dataset):
                 x = torch.from_numpy(x).T
                 y = torch.from_numpy(y).T
             else:
-                i, j = self.transforms(sample)
+                i, j, x_online = self.transforms(sample)
 
                 x1, y1 = self.resample_points(i['point'], i['seg'])
                 x2, y2 = self.resample_points(j['point'], j['seg'])
-                x = torch.from_numpy(x1).T, torch.from_numpy(x2).T
-                y = torch.from_numpy(y1).T, torch.from_numpy(y2).T
+                x_online, y_online = self.resample_points(x_online['point'], x_online['seg'])
+                x = torch.from_numpy(x1).T, torch.from_numpy(x2).T, x_online
+                y = torch.from_numpy(y1).T, torch.from_numpy(y2).T, y_online
 
             # x = torch.from_numpy(i['point']).T, torch.from_numpy(j['point']).T
             # y = torch.from_numpy(i['seg']), torch.from_numpy(j['seg'])
