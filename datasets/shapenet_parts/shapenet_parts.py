@@ -126,6 +126,8 @@ class ShapeNetParts(Dataset):
         class_name = fn[0]
         cls_id = self.classes[class_name]
 
+        seg = np.asarray(list(map(lambda k: self.seg_class_map[class_name][k-1], seg))).astype(np.int64)
+
         return point_set, seg, cls_id
 
     def resample_points(self, point_set, seg):

@@ -14,13 +14,12 @@ class PartSegmentationDataModule(LightningDataModule):
         self.limit_ratio = limit_ratio
         self.fine_tuning = fine_tuning
 
-        self.num_seg_classes, self.num_classes = self.get_number_of_seg_classes()
-
+        self.num_seg_classes, self.num_classes, self.npoints, self.seg_class_map = self.get_number_of_seg_classes()
 
     def get_number_of_seg_classes(self):
         data = ShapeNetParts('train', transforms=self.train_transforms, limit_ratio=self.limit_ratio,
                              fine_tuning=self.fine_tuning)
-        return data.num_seg_classes, data.num_classes
+        return data.num_seg_classes, data.num_classes, data.npoints, data.seg_class_map
 
     def train_dataloader(self):
         dataset = ShapeNetParts('train', transforms=self.train_transforms, limit_ratio=self.limit_ratio,
