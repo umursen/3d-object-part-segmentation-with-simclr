@@ -191,11 +191,7 @@ def cli_main():
 
     print(args.gpus)
 
-    dm = PartSegmentationDataModule(
-        batch_size=args.batch_size,
-        fine_tuning=True,
-        # limit_ratio=0.05
-    )
+    dm = PartSegmentationDataModule(batch_size=args.batch_size, fine_tuning=True, num_workers=args.num_workers)
 
     args.num_seg_classes = dm.num_seg_classes
     args.num_classes = dm.num_classes
@@ -228,6 +224,7 @@ def cli_main():
     )
 
     trainer.fit(model, datamodule=dm)
+    trainer.test(datamodule=dm)
 
 
 if __name__ == '__main__':
