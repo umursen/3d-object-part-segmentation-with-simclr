@@ -85,3 +85,19 @@ def test_val_shared_epoch(outputs, seg_class_map, num_seg_classes):
         np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float)),\
         mean_shape_ious,\
         np.mean(all_shape_ious)
+
+
+def inplace_relu(m):
+    classname = m.__class__.__name__
+    if classname.find('ReLU') != -1:
+        m.inplace=True
+
+
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv2d') != -1:
+        torch.nn.init.xavier_normal_(m.weight.data)
+        torch.nn.init.constant_(m.bias.data, 0.0)
+    elif classname.find('Linear') != -1:
+        torch.nn.init.xavier_normal_(m.weight.data)
+        torch.nn.init.constant_(m.bias.data, 0.0)

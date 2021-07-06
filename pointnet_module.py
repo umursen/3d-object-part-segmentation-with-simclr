@@ -15,24 +15,8 @@ import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from models.pointnet import PointNetEncoder, PointNetSegmentation, get_supervised_loss
 from util.logger import get_logger
-from util.training import to_categorical, test_val_shared_step, test_val_shared_epoch
+from util.training import to_categorical, test_val_shared_step, test_val_shared_epoch, inplace_relu, weights_init
 import pdb
-
-
-def inplace_relu(m):
-    classname = m.__class__.__name__
-    if classname.find('ReLU') != -1:
-        m.inplace=True
-
-
-def weights_init(m):
-    classname = m.__class__.__name__
-    if classname.find('Conv2d') != -1:
-        torch.nn.init.xavier_normal_(m.weight.data)
-        torch.nn.init.constant_(m.bias.data, 0.0)
-    elif classname.find('Linear') != -1:
-        torch.nn.init.xavier_normal_(m.weight.data)
-        torch.nn.init.constant_(m.bias.data, 0.0)
 
 
 class SupervisedPointNet(pl.LightningModule):
