@@ -337,6 +337,7 @@ def cli_main():
     )
 
     trainer.fit(model, datamodule=dm)
+    trainer.test(datamodule=dm)
 
 
 if __name__ == '__main__':
