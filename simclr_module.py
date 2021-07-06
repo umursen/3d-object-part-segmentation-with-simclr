@@ -86,6 +86,7 @@ class SimCLR(pl.LightningModule):
         learning_rate: float = 1e-3,
         final_lr: float = 0.,
         weight_decay: float = 1e-6,
+        save_frequency: int = 50,
         **kwargs
     ):
         """
@@ -124,6 +125,8 @@ class SimCLR(pl.LightningModule):
         self.encoder = self.init_model()
 
         self.projection = Projection(input_dim=self.hidden_mlp, hidden_dim=self.hidden_mlp, output_dim=self.feat_dim)
+
+        self.save_frequency = save_frequency
 
         # compute iters per epoch
         global_batch_size = self.num_nodes * self.gpus * self.batch_size if self.gpus > 0 else self.batch_size
@@ -166,6 +169,12 @@ class SimCLR(pl.LightningModule):
 
         self.log('val_loss', loss, on_step=False, on_epoch=True, sync_dist=True)
         return loss
+
+    def on_validation_epoch_end(self):
+        if self.trainer.current_epoch % self.save_frequency == 0:
+            logger_save_path = f'{self.logger.save_dir}/3dpart-simclr/{self.logger._id}/checkpoints'
+            print(f'Logger save dir: {logger_save_path}')
+            self.trainer.save_checkpoint(filepath=f'{logger_save_path}/every_{self.save_frequency}_epoch_{self.trainer.current_epoch}.ckpt')
 
     def exclude_from_wt_decay(self, named_params, weight_decay, skip_list=['bias', 'bn']):
         params = []
@@ -267,7 +276,7 @@ class SimCLR(pl.LightningModule):
         # specify flags to store false
         parser.add_argument("--hidden_mlp", default=2048, type=int, help="hidden layer dimension in projection head")
         parser.add_argument("--feat_dim", default=128, type=int, help="feature dimension")
-        parser.add_argument("--online_ft", default=1, type=int, help='online fine tuning')
+        parser.add_argument("--online_ft", default=0, type=int, help='online fine tuning')
         parser.add_argument("--fp32", action='store_true')
 
         # transform params
@@ -278,13 +287,14 @@ class SimCLR(pl.LightningModule):
         parser.add_argument("--fast_dev_run", default=0, type=int)
         parser.add_argument("--num_nodes", default=1, type=int, help="number of nodes for training")
         parser.add_argument("--gpus", default=1, type=int, help="number of gpus to train on")
-        parser.add_argument("--num_workers", default=8, type=int, help="num of workers per GPU")
+        parser.add_argument("--num_workers", default=4, type=int, help="num of workers per GPU")
         parser.add_argument("--optimizer", default="adam", type=str, help="choose between adam/lars")
         parser.add_argument('--exclude_bn_bias', action='store_true', help="exclude bn/bias from weight decay")
         parser.add_argument("--max_epochs", default=100, type=int, help="number of total epochs to run")
         parser.add_argument("--max_steps", default=-1, type=int, help="max steps")
         parser.add_argument("--warmup_epochs", default=10, type=int, help="number of warmup epochs")
         parser.add_argument("--batch_size", default=128, type=int, help="batch size per gpu")
+        parser.add_argument("--save_frequency", default=50, type=int, help="save model every n epoch")
 
         parser.add_argument("--temperature", default=0.1, type=float, help="temperature parameter in training loss")
         parser.add_argument("--weight_decay", default=1e-6, type=float, help="weight decay")
@@ -309,7 +319,8 @@ def cli_main():
     elif args.dataset == 'shapenet':
         dm = PartSegmentationDataModule(
             args.batch_size,
-            # limit_ratio=0.05
+            #limit_ratio=0.05,
+            num_workers=args.num_workers
         )
 
         dm.train_transforms = SimCLRTrainDataTransform([
@@ -343,14 +354,16 @@ def cli_main():
         )
 
     lr_monitor = LearningRateMonitor(logging_interval="step")
-    model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='val_loss')
-    model_checkpoint_online = ModelCheckpoint(save_last=True, save_top_k=1, monitor='online_val_accuracy')
+    model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='val_loss', filename='val_loss_best')
+    model_checkpoint_online = ModelCheckpoint(save_last=True, save_top_k=1, monitor='online_val_accuracy',
+                                              filename='online_val_accuracy_best')
     callbacks = [model_checkpoint, online_evaluator, model_checkpoint_online] if args.online_ft else [model_checkpoint, lr_monitor]
     
     # TODO Q: Shouldn't we add this? 
     #callbacks.append(lr_monitor)
     
     print(args.gpus)
+
 
     trainer = pl.Trainer(
         logger=get_logger(),
