@@ -29,7 +29,8 @@ class PartSegmentationDataModule(LightningDataModule):
                                            shuffle=True, drop_last=True)
 
     def val_dataloader(self):
-        dataset = ShapeNetParts('val', transforms=self.val_transforms, limit_ratio=None, fine_tuning=self.fine_tuning)
+        dataset = ShapeNetParts('val', transforms=self.val_transforms, limit_ratio=self.limit_ratio,
+                                fine_tuning=self.fine_tuning)
         return torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, num_workers=self.num_workers,
                                            shuffle=False, drop_last=True)
 

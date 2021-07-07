@@ -87,7 +87,10 @@ class SSLFineTuner(pl.LightningModule):
         self.backbone.eval()
 
     def training_step(self, batch, batch_idx):
-        loss, prediction, target = self.shared_step(batch)
+        loss, prediction, y = self.shared_step(batch)
+
+        prediction = prediction.contiguous().view(-1, self.num_seg_classes)
+        target = y.view(-1, 1)[:, 0]
 
         pred_choice = prediction.data.max(1)[1]
 
@@ -142,16 +145,18 @@ class SSLFineTuner(pl.LightningModule):
 
         with torch.no_grad():
             representations, concat, trans_feat = self.backbone(x)
-
-        prediction = self.decoder(representations,
+        # pdb.set_trace()
+        prediction = self.decoder(
+            representations,
             x.size(),
             to_categorical(class_id, self.num_classes),
-            concat)
+            concat
+        )
 
-        prediction = prediction.contiguous().view(-1, self.num_seg_classes)
+        prediction_flatten = prediction.contiguous().view(-1, self.num_seg_classes)
         target = y.view(-1, 1)[:, 0]
 
-        loss = self.loss_criterion(prediction, target, trans_feat)
+        loss = self.loss_criterion(prediction_flatten, target, trans_feat)
 
         return loss, prediction, y
 
@@ -206,7 +211,11 @@ def cli_main():
         # TODO: Set data loader
         dm = ...
     elif args.dataset == 'shapenet':
-        dm = PartSegmentationDataModule(args.batch_size, limit_ratio=0.1, fine_tuning=True)
+        dm = PartSegmentationDataModule(
+            args.batch_size,
+            limit_ratio=0.1,
+            fine_tuning=True
+        )
 
         dm.train_transforms = FineTuningTrainDataTransform([
             GaussianWhiteNoise(p=0.7),
@@ -215,6 +224,7 @@ def cli_main():
         dm.val_transforms = FineTuningEvalDataTransform()
 
         args.num_seg_classes = dm.num_seg_classes
+        args.num_classes = dm.num_classes
     elif args.dataset == 'coseg':
         # TODO: Set data loader
         dm = ...
@@ -233,14 +243,16 @@ def cli_main():
 
     tuner = SSLFineTuner(
         backbone,
-        num_classes=args.num_seg_classes,
+        num_classes=args.num_classes,
+        num_seg_classes=args.num_seg_classes,
         epochs=args.num_epochs,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
         nesterov=args.nesterov,
         scheduler_type=args.scheduler_type,
         gamma=args.gamma,
-        final_lr=args.final_lr
+        final_lr=args.final_lr,
+        seg_class_map=dm.seg_class_map
     )
 
     trainer = pl.Trainer(

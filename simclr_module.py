@@ -24,28 +24,6 @@ import pdb
 from callbacks.online_evaluator import SSLOnlineEvaluator
 
 
-class SyncFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, tensor):
-        ctx.batch_size = tensor.shape[0]
-
-        gathered_tensor = [torch.zeros_like(tensor) for _ in range(torch.distributed.get_world_size())]
-
-        torch.distributed.all_gather(gathered_tensor, tensor)
-        gathered_tensor = torch.cat(gathered_tensor, 0)
-
-        return gathered_tensor
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        grad_input = grad_output.clone()
-        torch.distributed.all_reduce(grad_input, op=torch.distributed.ReduceOp.SUM, async_op=False)
-
-        idx_from = torch.distributed.get_rank() * ctx.batch_size
-        idx_to = (torch.distributed.get_rank() + 1) * ctx.batch_size
-        return grad_input[idx_from:idx_to]
-
-
 class Projection(nn.Module):
 
     def __init__(self, input_dim=2048, hidden_dim=2048, output_dim=128):
@@ -237,12 +215,8 @@ class SimCLR(pl.LightningModule):
         # out_1_dist: [batch_size * world_size, dim]
         # out_2_dist: [batch_size * world_size, dim]
 
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
-            out_1_dist = SyncFunction.apply(out_1)
-            out_2_dist = SyncFunction.apply(out_2)
-        else:
-            out_1_dist = out_1
-            out_2_dist = out_2
+        out_1_dist = out_1
+        out_2_dist = out_2
 
         # out: [2 * batch_size, dim]
         # out_dist: [2 * batch_size * world_size, dim]
@@ -354,9 +328,8 @@ def cli_main():
         )
 
     lr_monitor = LearningRateMonitor(logging_interval="step")
-    model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='val_loss', filename='val_loss_best')
-    model_checkpoint_online = ModelCheckpoint(save_last=True, save_top_k=1, monitor='online_val_accuracy',
-                                              filename='online_val_accuracy_best')
+    model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='val_loss')
+    model_checkpoint_online = ModelCheckpoint(save_last=True, save_top_k=1, monitor='online_val_accuracy')
     callbacks = [model_checkpoint, online_evaluator, model_checkpoint_online] if args.online_ft else [model_checkpoint, lr_monitor]
     
     # TODO Q: Shouldn't we add this? 
