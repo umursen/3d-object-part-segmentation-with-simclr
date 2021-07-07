@@ -2,18 +2,16 @@ from argparse import ArgumentParser
 
 from simclr_module import SimCLR
 
-from typing import List, Optional
+from typing import List
 
 import pytorch_lightning as pl
 import torch
-from torch.nn import functional as F
-from torchmetrics import Accuracy
 
 from models.pointnet import PointNetDecoder, get_supervised_loss
 from transforms import FineTuningEvalDataTransform, FineTuningTrainDataTransform
 from datasets.data_modules import PartSegmentationDataModule
 from augmentations.augmentations import *
-import pdb
+
 from util.logger import get_logger
 from util.training import inplace_relu, weights_init, to_categorical, test_val_shared_step, test_val_shared_epoch
 
@@ -38,6 +36,7 @@ class SSLFineTuner(pl.LightningModule):
         num_seg_classes: int = 50,
         npoints: int = 2500,
         seg_class_map: dict = None,
+        batch_size: int = 16
     ):
         """
         Args:
@@ -57,6 +56,7 @@ class SSLFineTuner(pl.LightningModule):
         self.gamma = gamma
         self.epochs = epochs
         self.final_lr = final_lr
+        self.batch_size = batch_size
 
         self.backbone = backbone
         self.backbone.encoder.return_point_features = True
@@ -78,11 +78,6 @@ class SSLFineTuner(pl.LightningModule):
             for label in self.seg_class_map[cat]:
                 self.seg_label_to_cat[label] = cat
 
-        # metrics
-        self.train_acc = Accuracy()
-        self.val_acc = Accuracy(compute_on_step=False)
-        self.test_acc = Accuracy(compute_on_step=False)
-
     def on_train_epoch_start(self) -> None:
         self.backbone.eval()
 
@@ -91,11 +86,10 @@ class SSLFineTuner(pl.LightningModule):
 
         prediction = prediction.contiguous().view(-1, self.num_seg_classes)
         target = y.view(-1, 1)[:, 0]
-
         pred_choice = prediction.data.max(1)[1]
 
         correct = pred_choice.eq(target.data).cpu().sum()
-        mean_correct = correct.item() / (prediction.shape[0] * self.npoints)
+        mean_correct = correct.item() / (self.batch_size * self.npoints)
 
         self.log('train_loss', loss, on_step=True, on_epoch=False)
         return {'loss': loss, 'mean_correct': mean_correct}
@@ -145,7 +139,7 @@ class SSLFineTuner(pl.LightningModule):
 
         with torch.no_grad():
             representations, concat, trans_feat = self.backbone(x)
-        # pdb.set_trace()
+
         prediction = self.decoder(
             representations,
             x.size(),
@@ -156,7 +150,7 @@ class SSLFineTuner(pl.LightningModule):
         prediction_flatten = prediction.contiguous().view(-1, self.num_seg_classes)
         target = y.view(-1, 1)[:, 0]
 
-        loss = self.loss_criterion(prediction_flatten, target, trans_feat)
+        loss = self.loss_criterion(prediction_flatten, target)
 
         return loss, prediction, y
 
@@ -189,7 +183,7 @@ def cli_main():
     parser.add_argument('--dataset', type=str, help='dataset to train', default='shapenet')
     parser.add_argument('--ckpt_path', type=str, help='path to ckpt')
 
-    parser.add_argument("--batch_size", default=64, type=int, help="batch size per gpu")
+    parser.add_argument("--batch_size", default=16, type=int, help="batch size per gpu")
     parser.add_argument("--num_workers", default=8, type=int, help="num of workers per GPU")
     parser.add_argument("--gpus", default=1, type=int, help="number of GPUs")
     parser.add_argument('--num_epochs', default=100, type=int, help="number of epochs")
@@ -213,7 +207,7 @@ def cli_main():
     elif args.dataset == 'shapenet':
         dm = PartSegmentationDataModule(
             args.batch_size,
-            limit_ratio=0.1,
+            limit_ratio=1,
             fine_tuning=True
         )
 
@@ -252,7 +246,8 @@ def cli_main():
         scheduler_type=args.scheduler_type,
         gamma=args.gamma,
         final_lr=args.final_lr,
-        seg_class_map=dm.seg_class_map
+        seg_class_map=dm.seg_class_map,
+        batch_size=dm.batch_size
     )
 
     trainer = pl.Trainer(
