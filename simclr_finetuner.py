@@ -1,5 +1,7 @@
 from argparse import ArgumentParser
 
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+
 from simclr_module import SimCLR
 
 from typing import List
@@ -250,6 +252,10 @@ def cli_main():
         batch_size=dm.batch_size
     )
 
+    lr_monitor = LearningRateMonitor(logging_interval="step")
+    model_checkpoint = ModelCheckpoint(save_last=True, save_top_k=1, monitor='val_instance_avg_iou', mode='max')
+    callbacks = [model_checkpoint, lr_monitor]
+
     trainer = pl.Trainer(
         logger=get_logger(),
         gpus=args.gpus,
@@ -258,6 +264,7 @@ def cli_main():
         max_epochs=args.num_epochs,
         distributed_backend='ddp',
         sync_batchnorm=True if args.gpus > 1 else False,
+        callbacks=callbacks,
     )
 
     trainer.fit(tuner, dm)
