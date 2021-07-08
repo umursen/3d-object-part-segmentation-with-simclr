@@ -293,16 +293,16 @@ def cli_main():
     elif args.dataset == 'shapenet':
         dm = PartSegmentationDataModule(
             args.batch_size,
-            #limit_ratio=0.05 ,
+            #limit_ratio=0.05,
             num_workers=args.num_workers
         )
 
         dm.train_transforms = SimCLRTrainDataTransform([
-            Rescale(0.5),
+            Flip (0.5),
             RandomDrop(0.5)
         ])
         dm.val_transforms = SimCLREvalDataTransform([
-            Rescale(0.5),
+            Flip (0.5),
             RandomDrop(0.5)
         ])
     elif args.dataset == 'coseg':
