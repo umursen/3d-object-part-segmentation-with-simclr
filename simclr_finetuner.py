@@ -209,12 +209,12 @@ def cli_main():
     elif args.dataset == 'shapenet':
         dm = PartSegmentationDataModule(
             args.batch_size,
-            limit_ratio=1,
+            limit_ratio=0.1,
             fine_tuning=True
         )
 
         dm.train_transforms = FineTuningTrainDataTransform([
-            GaussianWhiteNoise(p=0.7),
+            GaussianNoise(p=0.7),
             Rotation(0.5)
         ])
         dm.val_transforms = FineTuningEvalDataTransform()

@@ -128,7 +128,7 @@ class Flip(RandomAugmentation):
         return {'point': points_temp, 'seg': seg}
 
 
-class GaussianWhiteNoise(RandomAugmentation):
+class GaussianNoise(RandomAugmentation):
     """
     Flip the object over x or y axis.
 
