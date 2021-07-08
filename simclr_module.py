@@ -293,7 +293,7 @@ def cli_main():
     elif args.dataset == 'shapenet':
         dm = PartSegmentationDataModule(
             args.batch_size,
-            #limit_ratio=0.05,
+            #limit_ratio=0.05 ,
             num_workers=args.num_workers
         )
 
