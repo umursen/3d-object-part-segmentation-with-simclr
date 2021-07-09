@@ -298,10 +298,10 @@ def cli_main():
         )
 
         dm.train_transforms = SimCLRTrainDataTransform([
-            Rotation(0.5)
+            GaussianNoise(0.7)
         ])
         dm.val_transforms = SimCLREvalDataTransform([
-            Rotation(0.5)
+            GaussianNoise(0.7)
         ])
     elif args.dataset == 'coseg':
         # TODO: Set data loader
