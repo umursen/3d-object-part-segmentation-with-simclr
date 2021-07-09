@@ -132,7 +132,7 @@ class SSLFineTuner(pl.LightningModule):
         self.log('test_class_avg_accuracy', class_avg_accuracy, on_step=False, on_epoch=True, sync_dist=True) # NAN
 
         for cat in sorted(shape_ious.keys()):
-            self.log(f'eval mIoU of {cat}', shape_ious[cat], on_step=False, on_epoch=True, sync_dist=True)
+            self.log(f'test mIoU of {cat}', shape_ious[cat], on_step=False, on_epoch=True, sync_dist=True)
         self.log('test_class_avg_iou', class_avg_iou, on_step=False, on_epoch=True, sync_dist=True) # NAN
         self.log('test_instance_avg_iou', instance_avg_iou, on_step=False, on_epoch=True, sync_dist=True)
 

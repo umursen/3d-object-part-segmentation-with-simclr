@@ -80,7 +80,10 @@ class ShapeNetParts(Dataset):
             limited_datapaths = []
             for k, v in self.cat.items():
                 class_paths = list(filter(lambda x: k==x[0], self.datapath))
-                selected_class_paths = np.random.choice(len(class_paths), round(int(len(class_paths)*limit_ratio)))
+                selected_len = int(len(class_paths)*limit_ratio)
+                if selected_len < 3:
+                    selected_len = 3
+                selected_class_paths = np.random.choice(len(class_paths), selected_len)
                 limited_datapaths += list(np.asarray(class_paths)[selected_class_paths])
             self.datapath = limited_datapaths
 
