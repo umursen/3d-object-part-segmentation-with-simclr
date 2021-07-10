@@ -262,7 +262,7 @@ def cli_main():
         num_nodes=1,
         precision=16,
         max_epochs=args.num_epochs,
-        distributed_backend='ddp',
+        distributed_backend='ddp' if args.gpus > 1 else None,
         sync_batchnorm=True if args.gpus > 1 else False,
         callbacks=callbacks,
     )
