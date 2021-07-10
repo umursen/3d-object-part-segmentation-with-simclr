@@ -215,7 +215,7 @@ def cli_main():
         )
 
         dm.train_transforms = FineTuningTrainDataTransform([
-            Flip(0.5),
+            RandomDrop(0.5),
         ])
         dm.val_transforms = FineTuningEvalDataTransform()
 
