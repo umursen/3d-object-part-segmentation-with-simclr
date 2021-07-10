@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 
+from datasets.shapenet_parts.shapenet_parts import ShapeNetParts
 from simclr_module import SimCLR
 
 from typing import List
@@ -214,8 +215,7 @@ def cli_main():
         )
 
         dm.train_transforms = FineTuningTrainDataTransform([
-            GaussianNoise(p=0.7),
-            Rotation(0.5)
+            GaussianNoise(0.7)
         ])
         dm.val_transforms = FineTuningEvalDataTransform()
 
