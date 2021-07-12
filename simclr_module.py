@@ -299,13 +299,11 @@ def cli_main():
 
         dm.train_transforms = SimCLRTrainDataTransform([
             GaussianNoise(0.7),
-            Rescale(0.5),
-            RandomDrop(0.5)
+            Rescale(0.5)
         ])
         dm.val_transforms = SimCLREvalDataTransform([
             GaussianNoise(0.7),
-            Rescale(0.5),
-            RandomDrop(0.5)
+            Rescale(0.5)
         ])
     elif args.dataset == 'coseg':
         # TODO: Set data loader
@@ -338,7 +336,6 @@ def cli_main():
     #callbacks.append(lr_monitor)
     
     print(args.gpus)
-
 
     trainer = pl.Trainer(
         logger=get_logger(),
