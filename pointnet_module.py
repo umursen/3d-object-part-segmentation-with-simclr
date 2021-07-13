@@ -3,8 +3,9 @@ import sys;
 
 import numpy as np
 
+from augmentations.augmentations import GaussianNoise, Rotation, RandomCuboid, Rescale
 from datasets.data_modules import PartSegmentationDataModule
-from datasets.shapenet_parts.shapenet_parts import ShapeNetParts
+from transforms import FineTuningTrainDataTransform
 
 sys.path.append(os.getcwd())
 
@@ -13,10 +14,9 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-from models.pointnet import PointNetEncoder, PointNetSegmentation, get_supervised_loss
+from models.pointnet import PointNetSegmentation, get_supervised_loss
 from util.logger import get_logger
 from util.training import to_categorical, test_val_shared_step, test_val_shared_epoch, inplace_relu, weights_init
-import pdb
 
 
 class SupervisedPointNet(pl.LightningModule):
@@ -207,10 +207,11 @@ def cli_main():
     model = SupervisedPointNet(**args.__dict__)
 
 
-    # dm.train_transforms = SimCLRTrainDataTransform([
-    #     GaussianWhiteNoise(p=0.7),
-    #     Rotation(0.5)
-    # ])
+    dm.train_transforms = FineTuningTrainDataTransform([
+        RandomCuboid(p=1),
+        GaussianNoise(p=0.7),
+        Rescale(0.5)
+    ])
     # dm.val_transforms = SimCLREvalDataTransform([
     #     GaussianWhiteNoise(p=0.7),
     #     Rotation(0.5)
