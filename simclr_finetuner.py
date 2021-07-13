@@ -215,8 +215,9 @@ def cli_main():
         )
 
         dm.train_transforms = FineTuningTrainDataTransform([
-            Rescale(0.5),
-            Flip(0.5)
+            RandomCuboid(p=1),
+            GaussianNoise(0.7),
+            Rescale(0.5)
         ])
         dm.val_transforms = FineTuningEvalDataTransform()
 
