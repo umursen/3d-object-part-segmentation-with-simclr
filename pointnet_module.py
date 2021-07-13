@@ -147,6 +147,12 @@ class SupervisedPointNet(pl.LightningModule):
         self.log('test_class_avg_iou', class_avg_iou, on_step=False, on_epoch=True, sync_dist=True) # NAN
         self.log('test_instance_avg_iou', instance_avg_iou, on_step=False, on_epoch=True, sync_dist=True)
 
+    def inference_step(self, x, cls_id):
+        prediction, _ = self.model(x, to_categorical(cls_id, self.num_classes))
+        prediction = prediction.contiguous().view(-1, self.num_seg_classes)
+        pred_choice = prediction.data.max(1)[1]
+        return pred_choice
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         return optimizer
