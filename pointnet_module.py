@@ -3,8 +3,9 @@ import sys;
 
 import numpy as np
 
+from augmentations.augmentations import GaussianNoise, Rotation, RandomCuboid, Rescale
 from datasets.data_modules import PartSegmentationDataModule
-from datasets.shapenet_parts.shapenet_parts import ShapeNetParts
+from transforms import FineTuningTrainDataTransform
 
 sys.path.append(os.getcwd())
 
@@ -13,10 +14,9 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-from models.pointnet import PointNetEncoder, PointNetSegmentation, get_supervised_loss
+from models.pointnet import PointNetSegmentation, get_supervised_loss
 from util.logger import get_logger
 from util.training import to_categorical, test_val_shared_step, test_val_shared_epoch, inplace_relu, weights_init
-import pdb
 
 
 class SupervisedPointNet(pl.LightningModule):
@@ -147,6 +147,12 @@ class SupervisedPointNet(pl.LightningModule):
         self.log('test_class_avg_iou', class_avg_iou, on_step=False, on_epoch=True, sync_dist=True) # NAN
         self.log('test_instance_avg_iou', instance_avg_iou, on_step=False, on_epoch=True, sync_dist=True)
 
+    def inference_step(self, x, cls_id):
+        prediction, _ = self.model(x, to_categorical(cls_id, self.num_classes))
+        prediction = prediction.contiguous().view(-1, self.num_seg_classes)
+        pred_choice = prediction.data.max(1)[1]
+        return pred_choice
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         return optimizer
@@ -161,10 +167,10 @@ class SupervisedPointNet(pl.LightningModule):
         parser.add_argument("--fast_dev_run", default=0, type=int)
         parser.add_argument("--num_nodes", default=1, type=int, help="number of nodes for training")
         parser.add_argument("--gpus", default=1, type=int, help="number of gpus to train on")
-        parser.add_argument("--num_workers", default=8, type=int, help="num of workers per GPU")
+        parser.add_argument("--num_workers", default=4, type=int, help="num of workers per GPU")
         parser.add_argument("--optimizer", default="adam", type=str, help="choose between adam/lars")
         parser.add_argument('--exclude_bn_bias', action='store_true', help="exclude bn/bias from weight decay")
-        parser.add_argument("--max_epochs", default=100, type=int, help="number of total epochs to run")
+        parser.add_argument("--max_epochs", default=200, type=int, help="number of total epochs to run")
         parser.add_argument("--max_steps", default=-1, type=int, help="max steps")
         parser.add_argument("--warmup_epochs", default=10, type=int, help="number of warmup epochs")
         parser.add_argument("--batch_size", default=32, type=int, help="batch size per gpu")
@@ -191,7 +197,10 @@ def cli_main():
 
     print(args.gpus)
 
-    dm = PartSegmentationDataModule(batch_size=args.batch_size, fine_tuning=True, num_workers=args.num_workers)
+    dm = PartSegmentationDataModule(batch_size=args.batch_size,
+                                    limit_ratio=0.1,
+                                    fine_tuning=True,
+                                    num_workers=args.num_workers)
 
     args.num_seg_classes = dm.num_seg_classes
     args.num_classes = dm.num_classes
@@ -201,10 +210,11 @@ def cli_main():
     model = SupervisedPointNet(**args.__dict__)
 
 
-    # dm.train_transforms = SimCLRTrainDataTransform([
-    #     GaussianWhiteNoise(p=0.7),
-    #     Rotation(0.5)
-    # ])
+    dm.train_transforms = FineTuningTrainDataTransform([
+        RandomCuboid(p=1),
+        GaussianNoise(p=0.7),
+        Rescale(0.5)
+    ])
     # dm.val_transforms = SimCLREvalDataTransform([
     #     GaussianWhiteNoise(p=0.7),
     #     Rotation(0.5)
