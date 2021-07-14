@@ -9,4 +9,4 @@ cd -
 
 export WANDB_API_KEY='4cc3ac6d5ce3acc51384ba12267c730229d39346'
 
-python simclr_module.py --batch_size 128 --max_epochs 500 --num_workers 4 --online_ft 0
+python simclr_module.py --batch_size 128 --max_epochs 400 --num_workers 4 --online_ft 0
