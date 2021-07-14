@@ -157,6 +157,23 @@ class SSLFineTuner(pl.LightningModule):
 
         return loss, prediction, y
 
+    def inference_step(self, x, cls_id):
+        with torch.no_grad():
+            representations, concat, trans_feat = self.backbone(x)
+            prediction = self.decoder(
+                representations,
+                x.size(),
+                to_categorical(cls_id, self.num_classes),
+                concat
+            )
+
+        prediction_flatten = prediction.contiguous().view(-1, self.num_seg_classes)
+        pred_choice = prediction_flatten.data.max(1)[1]
+
+        return pred_choice
+
+
+
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(
             self.decoder.parameters(),
