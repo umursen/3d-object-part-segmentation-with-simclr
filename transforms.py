@@ -22,14 +22,12 @@ class SimCLRTrainDataTransform(object):
 
     def __init__(self, data_transforms) -> None:
         augmentations = transforms.Compose([
-            RandomCuboid(p=1),
             *data_transforms
         ])
         self.data_transforms = augmentations
 
         # TODO: Parameterize the crop size
         self.online_transform = transforms.Compose([
-            RandomCuboid(p=1),
         ])
 
     def __call__(self, sample):
