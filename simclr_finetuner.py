@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 
+from datasets.shapenet_parts.shapenet_parts import ShapeNetParts
 from simclr_module import SimCLR
 
 from typing import List
@@ -132,7 +133,7 @@ class SSLFineTuner(pl.LightningModule):
         self.log('test_class_avg_accuracy', class_avg_accuracy, on_step=False, on_epoch=True, sync_dist=True) # NAN
 
         for cat in sorted(shape_ious.keys()):
-            self.log(f'eval mIoU of {cat}', shape_ious[cat], on_step=False, on_epoch=True, sync_dist=True)
+            self.log(f'test mIoU of {cat}', shape_ious[cat], on_step=False, on_epoch=True, sync_dist=True)
         self.log('test_class_avg_iou', class_avg_iou, on_step=False, on_epoch=True, sync_dist=True) # NAN
         self.log('test_instance_avg_iou', instance_avg_iou, on_step=False, on_epoch=True, sync_dist=True)
 
@@ -155,6 +156,23 @@ class SSLFineTuner(pl.LightningModule):
         loss = self.loss_criterion(prediction_flatten, target)
 
         return loss, prediction, y
+
+    def inference_step(self, x, cls_id):
+        with torch.no_grad():
+            representations, concat, trans_feat = self.backbone(x)
+            prediction = self.decoder(
+                representations,
+                x.size(),
+                to_categorical(cls_id, self.num_classes),
+                concat
+            )
+
+        prediction_flatten = prediction.contiguous().view(-1, self.num_seg_classes)
+        pred_choice = prediction_flatten.data.max(1)[1]
+
+        return pred_choice
+
+
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(
@@ -209,13 +227,13 @@ def cli_main():
     elif args.dataset == 'shapenet':
         dm = PartSegmentationDataModule(
             args.batch_size,
-            limit_ratio=1,
+            limit_ratio=0.1,
             fine_tuning=True
         )
 
         dm.train_transforms = FineTuningTrainDataTransform([
-            GaussianWhiteNoise(p=0.7),
-            Rotation(0.5)
+            GaussianNoise(0.7),
+            Rescale(0.5)
         ])
         dm.val_transforms = FineTuningEvalDataTransform()
 
@@ -262,7 +280,7 @@ def cli_main():
         num_nodes=1,
         precision=16,
         max_epochs=args.num_epochs,
-        distributed_backend='ddp',
+        distributed_backend='ddp' if args.gpus > 1 else None,
         sync_batchnorm=True if args.gpus > 1 else False,
         callbacks=callbacks,
     )
