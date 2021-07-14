@@ -47,11 +47,12 @@ class ShapeNetParts(Dataset):
             _, category, uuid = file.split('/')
             if category in self.cat.values():
                 self.meta[self.id2cat[category]].append((os.path.join(self.root,dataset_path, category, 'points', uuid+'.pts'),
-                                        os.path.join(self.root,dataset_path, category, 'points_label', uuid+'.seg')))
+                                        os.path.join(self.root,dataset_path, category, 'points_label', uuid+'.seg'),
+                                        os.path.join(self.root,dataset_path, category, 'seg_img', uuid+'.png')))
 
         for item in self.cat:
             for fn in self.meta[item]:
-                self.datapath.append((item, fn[0], fn[1]))
+                self.datapath.append((item, fn[0], fn[1], fn[2]))
 
         self.classes = dict(zip(sorted(self.cat), range(len(self.cat))))
         self.num_classes = len(self.classes)
@@ -88,12 +89,13 @@ class ShapeNetParts(Dataset):
             self.datapath = limited_datapaths
 
     def __getitem__(self, index):
-        point_set, seg, class_id = self.get_point_cloud_with_labels(index)
+        point_set, seg, img, class_id = self.get_point_cloud_with_labels(index)
 
         if self.transforms:
             sample = {
                 'point': point_set,
-                'seg': seg
+                'seg': seg,
+                'img': img
             }
             if self.fine_tuning:
                 i = self.transforms(sample)
@@ -114,7 +116,7 @@ class ShapeNetParts(Dataset):
             x = torch.from_numpy(x).T
             y = torch.from_numpy(y).T
 
-        return x, y, class_id
+        return x, y, img, class_id
 
     def __len__(self):
         return len(self.datapath)
@@ -123,23 +125,24 @@ class ShapeNetParts(Dataset):
         fn = self.datapath[index]
         point_set = np.loadtxt(fn[1]).astype(np.float32)
         seg = np.loadtxt(fn[2]).astype(np.int64)
+        img = fn[3]
 
         class_name = fn[0]
         cls_id = self.classes[class_name]
 
         seg = np.asarray(list(map(lambda k: self.seg_class_map[class_name][k-1], seg))).astype(np.int64)
 
-        return point_set, seg, cls_id
+        return point_set, seg, img, cls_id
 
     def resample_points(self, point_set, seg):
 
         choice = np.random.choice(len(seg), self.npoints, replace=True)
         # resample
         point_set = point_set[choice, :]
-
+        
         point_set = point_set - np.expand_dims(np.mean(point_set, axis=0), 0)  # center
         dist = np.max(np.sqrt(np.sum(point_set ** 2, axis=1)), 0)
         point_set = point_set / dist  # scale
 
-        seg = seg[choice]
+        seg = seg[choice] 
         return point_set, seg
