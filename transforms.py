@@ -7,11 +7,6 @@ if _TORCHVISION_AVAILABLE:
 else:  # pragma: no cover
     warn_missing_pkg('torchvision')
 
-if _OPENCV_AVAILABLE:
-    import cv2
-else:  # pragma: no cover
-    warn_missing_pkg('cv2', pypi_name='opencv-python')
-
 
 # Self-supervised
 
