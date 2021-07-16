@@ -7,11 +7,6 @@ if _TORCHVISION_AVAILABLE:
 else:  # pragma: no cover
     warn_missing_pkg('torchvision')
 
-if _OPENCV_AVAILABLE:
-    import cv2
-else:  # pragma: no cover
-    warn_missing_pkg('cv2', pypi_name='opencv-python')
-
 
 # Self-supervised
 
@@ -75,7 +70,6 @@ class FineTuningTrainDataTransform(object):
         xi = transform(sample)
         return xi
 
-
 class FineTuningEvalDataTransform(object):
     """
     Transforms for SimCLR
@@ -83,3 +77,18 @@ class FineTuningEvalDataTransform(object):
 
     def __call__(self, sample):
         return sample
+
+class FineTuningTestDataTransform(object):
+    """
+    Test transforms for SimCLR fine tuning module.
+    """
+
+    def __init__(self, data_transforms) -> None:
+        self.data_transforms = transforms.Compose([
+            *data_transforms
+        ])
+
+    def __call__(self, sample):
+        transform = self.data_transforms
+        xi = transform(sample)
+        return xi
