@@ -198,7 +198,7 @@ def cli_main():
     print(args.gpus)
 
     dm = PartSegmentationDataModule(batch_size=args.batch_size,
-                                    limit_ratio=0.01,
+                                    limit_ratio=0.1,
                                     fine_tuning=True,
                                     num_workers=args.num_workers)
 
