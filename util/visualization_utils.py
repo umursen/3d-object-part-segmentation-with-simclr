@@ -1,3 +1,4 @@
+from textwrap import fill
 import k3d
 import numpy as np
 import trimesh
@@ -45,7 +46,7 @@ def plot_tsne_points(x,y,plot_save_suffix=''):
     )
     tsne_plot.figure.savefig('plots/tsne_{}i_{}p_{}.png'.format(n_iter,perplexity,plot_save_suffix))
 
-def visualize_tsne_with_pictures(x,y,imgs,n_images=500,S=4000,s=75,image_name='tsne_with_images'):
+def visualize_tsne_with_pictures(x,y,imgs,n_images=500,S=4000,s=75,image_name='tsne_with_images',background=0):
     x = x-min(x)
     y = y-min(y)
     
@@ -60,7 +61,7 @@ def visualize_tsne_with_pictures(x,y,imgs,n_images=500,S=4000,s=75,image_name='t
         y = y[choice]
         imgs = imgs[choice]
 
-    G = np.zeros((S,S,3),dtype=np.uint8)
+    G = np.full((S,S,3), fill_value=background, dtype=np.uint8)
     for i,(x0, y0, img_path) in enumerate(zip(x, y,imgs)):
         if i%100 == 0:
             print('{}/{}'.format(i, n_images));
@@ -69,7 +70,7 @@ def visualize_tsne_with_pictures(x,y,imgs,n_images=500,S=4000,s=75,image_name='t
         a = int(a - (a-1)%s + 1)
         b = int(b - (b-1)%s + 1)
 
-        if G[a,b,1] == 0:
+        if G[a,b,1] == background:
             I = Image.open(img_path)
             I = I.resize((s,s))
             I = np.asarray(I)
