@@ -198,6 +198,7 @@ def cli_main():
     print(args.gpus)
 
     dm = PartSegmentationDataModule(batch_size=args.batch_size,
+                                    limit_ratio=0.01,
                                     fine_tuning=True,
                                     num_workers=args.num_workers)
 
@@ -209,10 +210,10 @@ def cli_main():
     model = SupervisedPointNet(**args.__dict__)
 
 
-    dm.train_transforms = FineTuningTrainDataTransform([
-        GaussianNoise(p=0.7),
-        Rescale(0.5)
-    ])
+    # dm.train_transforms = FineTuningTrainDataTransform([
+    #     GaussianNoise(p=0.7),
+    #     Rotation(0.5)
+    # ])
     # dm.val_transforms = SimCLREvalDataTransform([
     #     GaussianWhiteNoise(p=0.7),
     #     Rotation(0.5)
