@@ -37,4 +37,4 @@ class PartSegmentationDataModule(LightningDataModule):
     def test_dataloader(self):
         dataset = ShapeNetParts('test', transforms=None)
         return torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, num_workers=self.num_workers,
-                                           shuffle=False)
+                                           shuffle=False,drop_last=True)
