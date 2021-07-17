@@ -211,7 +211,7 @@ def cli_main():
 
     dm.train_transforms = FineTuningTrainDataTransform([
         GaussianNoise(p=0.7),
-        Rescale(0.5)
+        Rotation(0.5)
     ])
     # dm.val_transforms = SimCLREvalDataTransform([
     #     GaussianWhiteNoise(p=0.7),
